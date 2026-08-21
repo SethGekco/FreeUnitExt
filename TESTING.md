@@ -1,0 +1,110 @@
+# FreeUnitExt — testing
+
+## 0. Read this first: the two silent-failure modes
+
+**A. The DLL is not injected.** On Linux the actual Syringe inject list is
+`Resources/Compatibility/Unix/wine-game.sh` (line 2), *not*
+`Resources/ClientDefinitions.ini`. If `-i=FreeUnitExt.dll` is missing there, the
+DLL never loads and every key below silently does nothing.
+
+Verify: launch, then
+
+```bash
+grep -i freeunit "$RA2/syringe.log"
+```
+
+No match = not injected. Back up `wine-game.sh` first, then add `-i=FreeUnitExt.dll`.
+
+**B. The DLL is stale.** Confirm the file in the game folder is the one CI just
+built before concluding a fix "doesn't work":
+
+```bash
+md5sum "$RA2/FreeUnitExt.dll" DevBuild/FreeUnitExt.dll
+```
+
+Game folder: `/home/rex/snap/cncra2yr/common/.wine/drive_c/Westwood/RA2/`
+
+---
+
+## 1. Host tests (no game needed)
+
+```bash
+cd ~/Claude/FreeUnitExt
+g++ -std=c++20 -Wall -Wextra -Isrc tests/plan_test.cpp -o /tmp/pt && /tmp/pt
+```
+
+Expect `all checks passed` (37 checks). These cover direction parsing, ring
+geometry, spacing, random resolution through the injected RNG, limbo bypass and
+per-entry failure isolation. They do **not** touch the engine.
+
+---
+
+## 2. In-game scenarios
+
+Drop `test/freeunittest.ini` contents into your `rulesmd.ini` (it only uses
+vanilla types) and build the named buildings.
+
+| # | Build | Expect | Catches |
+|---|---|---|---|
+| 1 | `GAPILE` | 4 GIs, one on each of N/E/S/W | multi-entry + `.Cell` |
+| 2 | `NAHAND` | 3 conscripts north, a clear cell between each | `.Spacing` |
+| 3 | `GAWEAP` | 1 GI + 1 tank, both facing east | mixed infantry/vehicle, `.Facing` broadcast |
+| 4 | `NAWEAP` | 2 rhinos facing different random directions each game | synced RNG, `random` |
+| 5 | `GAREFN` | a harvester that **starts harvesting**, not guarding | Antares' mission fix reproduced |
+| 6 | `NAPOWR` | a second power plant appears within 3 cells | `Kind::Building`, foundation fit |
+| 7 | `GATECH` | no visible extra building, but Barracks units become buildable | `Limbo=yes` |
+| 8 | `NAHPAD` | pad comes with its aircraft even though `[General]SeparateAircraft=yes` | per-building override |
+| 9 | `GAAIRC` | 4 aircraft, one per pad, not stacked on the centre | `SeparateAircraft.Types=` + `DockingOffsets` |
+
+### The sharpest checks
+
+**#5** is the correctness canary: our takeover *bypasses* Antares' mission fix at
+`0x446E9F`, so if the harvester sits there guarding instead of harvesting, our
+reproduction of it in `GameMap::place` is wrong.
+
+**#9** is the one most likely to fail. It depends on `DockingOffsets` actually
+being populated; if all four aircraft stack on the building's centre, the vector
+was empty and the fallback kicked in.
+
+**#7** proves nothing on its own — check the tech tree, not the screen. Build
+`GATECH`, then confirm the Barracks-gated units are buildable *without* a visible
+Barracks on the map.
+
+---
+
+## 3. ManualFacing
+
+Give a vanilla unit `Speed=0` + `ManualFacing=yes` + `ManualFacing.ROT=3`, then
+right-click around it.
+
+- Expected: the body swings to face the clicked cell and stops.
+- Failure mode to watch for: the unit enters a permanent "moving" state and stops
+  shooting. That means the `SkipGameCode` return did not take effect.
+
+---
+
+## 4. Regression checks (nothing set)
+
+With the DLL loaded but **no** new keys in the INI, confirm unchanged behaviour:
+
+- A vanilla `FreeUnit=` building still gives its one vehicle. (Our hooks return
+  `0` in this case — but `FreeUnit=` alone *is* parsed by us, so this actually
+  exercises the takeover path. See INI_REFERENCE §1's behaviour-change note: the
+  unit's default facing changes to the building's facing.)
+- `[General]SeparateAircraft=no` + a vanilla helipad still gives one aircraft.
+- Antares `InitialPayload=` still works on a building that also has `FreeUnit=`.
+  **This is the Antares-coexistence check** — if InitialPayload stopped working,
+  our `0x446EE8` hook is firing at the wrong place relative to `0x446EE2`.
+
+---
+
+## 5. Known untested
+
+- **Save/load with limbo entries.** Build `GATECH` (#7), save, reload, and check
+  the tech tree still reflects the limbo building. Phobos' limbo bookkeeping does
+  not know about ours, so this may not survive.
+- **Multiplayer sync** with `random` facings/cells. Two clients, same map, both
+  build #4; if they disagree about the facings, the RNG wiring is wrong.
+- A building with both a Phobos `FreeWeeder` and our `FreeUnit=` list.
+- A type that is both `KeepTargetOnMove` (Phobos) and `Speed=0` + `ManualFacing`
+  — the `0x4C7462` chain-order collision case.

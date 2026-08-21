@@ -38,6 +38,7 @@
   <!-- Header files -->
   <ItemGroup>
     <ClInclude Include="src\FreeUnitExt.h" />
+    <ClInclude Include="src\compat\Phobos.Git.h" />
     <ClInclude Include="src\Delivery\Plan.h" />
     <ClInclude Include="src\Ext\Store.h" />
     <ClInclude Include="src\Ext\BuildingType\Body.h" />
@@ -88,7 +89,7 @@
   <!-- Include paths for all configurations -->
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <GenerateManifest>false</GenerateManifest>
-    <IncludePath>$(SolutionDir)src\;$(SolutionDir)YRpp;$(SolutionDir)Phobos\src;$(VC_IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir)src\;$(SolutionDir)src\compat\;$(SolutionDir)YRpp;$(SolutionDir)Phobos\src;$(VC_IncludePath)</IncludePath>
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(Configuration)\</OutDir>
     <IntDir>$(Configuration)\IntDir\</IntDir>
@@ -96,7 +97,7 @@
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DevBuild|Win32'">
     <GenerateManifest>false</GenerateManifest>
-    <IncludePath>$(SolutionDir)src\;$(SolutionDir)YRpp;$(SolutionDir)Phobos\src;$(VC_IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir)src\;$(SolutionDir)src\compat\;$(SolutionDir)YRpp;$(SolutionDir)Phobos\src;$(VC_IncludePath)</IncludePath>
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(Configuration)\</OutDir>
     <IntDir>$(Configuration)\IntDir\</IntDir>
@@ -104,7 +105,7 @@
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <GenerateManifest>false</GenerateManifest>
-    <IncludePath>$(SolutionDir)src\;$(SolutionDir)YRpp;$(SolutionDir)Phobos\src;$(VC_IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir)src\;$(SolutionDir)src\compat\;$(SolutionDir)YRpp;$(SolutionDir)Phobos\src;$(VC_IncludePath)</IncludePath>
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(Configuration)\</OutDir>
     <IntDir>$(Configuration)\IntDir\</IntDir>

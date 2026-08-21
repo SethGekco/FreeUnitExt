@@ -41,4 +41,8 @@ private:
     static IndexedStore<ManualFacingData> BuildingStore;
 
     static IndexedStore<ManualFacingData>* StoreFor(TechnoTypeClass const* pType);
+
+    // ArrayIndex is declared per concrete leaf type, not on TechnoTypeClass,
+    // so reaching it needs a WhatAmI-driven downcast.
+    static int IndexOf(TechnoTypeClass const* pType);
 };

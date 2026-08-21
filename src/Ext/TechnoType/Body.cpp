@@ -30,10 +30,40 @@ IndexedStore<ManualFacingData>* TechnoTypeExt::StoreFor(TechnoTypeClass const* p
     }
 }
 
+/*
+ * ArrayIndex is declared on each CONCRETE leaf type, not on TechnoTypeClass or
+ * any shared base — so it cannot be read through a TechnoTypeClass*. Downcast
+ * on WhatAmI() to reach it. Single inheritance throughout, so static_cast is
+ * safe once WhatAmI has identified the leaf.
+ */
+int TechnoTypeExt::IndexOf(TechnoTypeClass const* pType)
+{
+    if (!pType)
+        return -1;
+
+    switch (pType->WhatAmI())
+    {
+    case AbstractType::UnitType:
+        return static_cast<UnitTypeClass const*>(pType)->ArrayIndex;
+    case AbstractType::InfantryType:
+        return static_cast<InfantryTypeClass const*>(pType)->ArrayIndex;
+    case AbstractType::AircraftType:
+        return static_cast<AircraftTypeClass const*>(pType)->ArrayIndex;
+    case AbstractType::BuildingType:
+        return static_cast<BuildingTypeClass const*>(pType)->ArrayIndex;
+    default:
+        return -1;
+    }
+}
+
 ManualFacingData const* TechnoTypeExt::Find(TechnoTypeClass const* pType)
 {
     auto const pStore = StoreFor(pType);
-    return pStore ? pStore->TryGet(pType->ArrayIndex) : nullptr;
+    if (!pStore)
+        return nullptr;
+
+    const int index = IndexOf(pType);
+    return index >= 0 ? pStore->TryGet(index) : nullptr;
 }
 
 void TechnoTypeExt::LoadFromINI(TechnoTypeClass* pType, CCINIClass* pINI)
@@ -45,11 +75,15 @@ void TechnoTypeExt::LoadFromINI(TechnoTypeClass* pType, CCINIClass* pINI)
     if (!pStore)
         return;
 
+    const int index = IndexOf(pType);
+    if (index < 0)
+        return;
+
     const char* section = pType->ID;
     if (!pINI->GetSection(section))
         return;
 
-    auto& data = pStore->ForIndex(pType->ArrayIndex);
+    auto& data = pStore->ForIndex(index);
 
     // Defaults are the currently-stored values, so a later INI in the chain
     // (game mode, scenario, map) overrides without wiping what rules set.

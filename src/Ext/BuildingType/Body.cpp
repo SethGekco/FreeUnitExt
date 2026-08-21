@@ -13,6 +13,7 @@
 #include <AircraftTypeClass.h>
 #include <BuildingClass.h>
 #include <BuildingTypeClass.h>
+#include <CCINIClass.h>
 #include <CellClass.h>
 #include <FootClass.h>
 #include <HouseClass.h>

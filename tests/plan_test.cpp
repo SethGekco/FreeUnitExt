@@ -9,6 +9,7 @@
 #include <Delivery/Plan.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <set>
 #include <string>
 #include <vector>
@@ -338,6 +339,47 @@ static void test_placeFailureTriesNextCell()
         "it moved on to the next candidate instead of giving up");
 }
 
+static void test_parentRadiusClearsFootprint()
+{
+    std::printf("resolve — parentRadius keeps units off the parent's footprint\n");
+
+    // This is the regression that made the DLL look inert in-game: units were
+    // delivered one cell from the building's CENTRE, i.e. underneath a 2x2 or
+    // larger building, reported as successfully placed, and never seen.
+    FakeMap map;
+    auto entry = foot(1000);
+    entry.Cell = Delivery::Dir_N;
+
+    Delivery::resolve({ entry }, map, Delivery::Dir_N, /*parentRadius=*/2);
+    check(map.Log[0].Where == Delivery::Offset { 0, -3 },
+        "first unit starts beyond parentRadius, not at radius 1");
+
+    // Spacing still composes on top of the footprint clearance.
+    FakeMap spaced;
+    auto a = foot(1001); a.Cell = Delivery::Dir_N; a.Spacing = 1;
+    auto b = foot(1002); b.Cell = Delivery::Dir_N; b.Spacing = 1;
+
+    Delivery::resolve({ a, b }, spaced, Delivery::Dir_N, /*parentRadius=*/2);
+    check(spaced.Log[0].Where == Delivery::Offset { 0, -4 }, "footprint + spacing for the first");
+    check(spaced.Log[1].Where == Delivery::Offset { 0, -6 }, "and the gap is preserved for the second");
+
+    // A directionless entry must clear the footprint too, not just a named ray.
+    FakeMap any;
+    auto loose = foot(1003);
+    Delivery::resolve({ loose }, any, Delivery::Dir_N, /*parentRadius=*/2);
+    const auto& w = any.Log[0].Where;
+    const int cheb = (std::abs(w.X) > std::abs(w.Y)) ? std::abs(w.X) : std::abs(w.Y);
+    check(cheb >= 3, "ring search also starts outside the footprint");
+
+    // Default (no parentRadius) must behave exactly as before.
+    FakeMap legacy;
+    auto plain = foot(1004);
+    plain.Cell = Delivery::Dir_N;
+    Delivery::resolve({ plain }, legacy, Delivery::Dir_N);
+    check(legacy.Log[0].Where == Delivery::Offset { 0, -1 },
+        "omitting parentRadius keeps the original radius-1 behaviour");
+}
+
 int main()
 {
     test_parseDirection();
@@ -350,6 +392,7 @@ int main()
     test_buildingRangeIsBounded();
     test_failureIsIsolated();
     test_placeFailureTriesNextCell();
+    test_parentRadiusClearsFootprint();
 
     if (g_failures)
     {

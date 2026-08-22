@@ -463,17 +463,30 @@ bool GameMap::place(Delivery::Entry const& entry, Delivery::Offset offset, int f
     const auto coords = CellClass::Cell2Coord(target);
     const auto dir = static_cast<DirType>(((facing % 256) + 256) % 256);
 
-    ++Unsorted::ScenarioInit;
+    // NO ScenarioInit bracket here, deliberately.
+    //
+    // ScenarioInit makes Unlimbo skip its placement checks ("you can put Terror
+    // Drones into trees"), so wrapping it made every placement 'succeed' —
+    // including ones landing inside the parent building's own footprint, where
+    // the unit is created, reported delivered, and hidden under the building
+    // sprite. Vanilla's free-unit path does not set it either; only the
+    // aircraft path does, because an aircraft is meant to sit on the building.
+    // Letting Unlimbo refuse means place() returns false and the planner walks
+    // on to the next candidate cell.
     const bool ok = pObject->Unlimbo(coords, dir);
-    --Unsorted::ScenarioInit;
 
     if (!ok)
     {
         // Creation succeeded but the cell rejected it; drop the object rather
         // than leaking a limboed techno into the global arrays.
+        Debug::Log("[FreeUnitExt]   Unlimbo REFUSED %s at cell (%d,%d) offset (%+d,%+d)\n",
+            pType->ID, int(target.X), int(target.Y), offset.X, offset.Y);
         pObject->UnInit();
         return false;
     }
+
+    Debug::Log("[FreeUnitExt]   placed %s at cell (%d,%d) offset (%+d,%+d) facing %d\n",
+        pType->ID, int(target.X), int(target.Y), offset.X, offset.Y, facing);
 
     // A free unit with nothing to do should guard its birthplace. Harvesters
     // are the one type with a better default — the same distinction Antares

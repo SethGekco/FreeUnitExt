@@ -269,14 +269,27 @@ namespace Delivery
      * Facing unset — a free unit popping out of a factory looking the same way
      * as the factory reads far better than everything defaulting to north.
      */
-    inline Result resolve(std::vector<Entry> const& entries, IPlacement& map, int parentFacing)
+    inline Result resolve(std::vector<Entry> const& entries, IPlacement& map,
+        int parentFacing, int parentRadius = 0)
     {
         Result result;
 
+        if (parentRadius < 0)
+            parentRadius = 0;
+
         // Running distance already consumed per compass direction, so that
         // Spacing separates successive units sharing a side.
-        int usedRadius[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-        int usedAny = 0;
+        //
+        // Seeded with parentRadius, NOT zero: the parent building occupies more
+        // than its centre cell, and starting the search one cell from the centre
+        // drops units INSIDE the footprint of anything bigger than 1x1, where
+        // they are hidden under the building's own sprite. That failure is
+        // invisible — placement reports success and the unit is simply never
+        // seen — so the radius has to come from the caller's foundation size.
+        int usedRadius[8];
+        for (auto& slot : usedRadius)
+            slot = parentRadius;
+        int usedAny = parentRadius;
 
         for (auto const& entry : entries)
         {

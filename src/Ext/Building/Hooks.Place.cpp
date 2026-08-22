@@ -35,6 +35,8 @@
 #include <RulesClass.h>
 #include <UnitTypeClass.h>
 #include <Unsorted.h>
+#include <algorithm>
+
 #include <Helpers/Cast.h>
 #include <Utilities/Debug.h>
 #include <Utilities/Macro.h>
@@ -175,14 +177,27 @@ DEFINE_HOOK(0x446B16, BuildingClass_GrandOpening_Deliver, 0x7)
 
     GameMap map(pThis, list);
 
+    // How far the parent's own footprint reaches from its centre cell. Without
+    // this the search starts one cell from the centre, which is still INSIDE
+    // anything bigger than 1x1 — units then spawn under the building and are
+    // never seen. Deliberately rounded up: a unit appearing one cell further
+    // out than ideal is vastly better than an invisible one.
+    auto const pType = pThis->Type;
+    const int foundation = (std::max)(
+        int(pType->GetFoundationWidth()),
+        int(pType->GetFoundationHeight(false)));
+    const int parentRadius = foundation / 2 + 1;
+
     auto const result = Delivery::resolve(
         list.Entries,
         map,
-        int(pThis->PrimaryFacing.Current().GetDir()));
+        int(pThis->PrimaryFacing.Current().GetDir()),
+        parentRadius);
 
-    Debug::Log("[FreeUnitExt] deliver [%s]: %d delivered, %d failed (of %u)\n",
-        pThis->Type->ID, result.Delivered, result.Failed,
-        unsigned(list.Entries.size()));
+    Debug::Log("[FreeUnitExt] deliver [%s]: %d delivered, %d failed (of %u), "
+        "foundation %d -> parentRadius %d\n",
+        pType->ID, result.Delivered, result.Failed,
+        unsigned(list.Entries.size()), foundation, parentRadius);
 
     return PadAircraftBlock;
 }

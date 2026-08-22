@@ -62,21 +62,23 @@ src/Ext/BuildingType/Body.cpp       GameMap — the ONLY engine-aware code in
                                     ▲
 src/Ext/Building/Hooks.Place.cpp    Three hooks inside Grand_Opening.
 
-src/Ext/Store.h            ArrayIndex-keyed type data (see §3.1).
+src/Ext/Store.h            Pointer-keyed type data (see §3.1).
 ```
 
 ### 3.1 No Phobos extension containers
 
-We store per-type data in plain `ArrayIndex`-keyed vectors rather than using
-Phobos' `Container`/`Extension` machinery.
+We store per-type data in a map keyed by the **type object's own pointer**,
+rather than using Phobos' `Container`/`Extension` machinery.
 
 Two reasons, one principled and one practical:
 
 - **Principled:** everything this DLL stores is derived from INI and never
-  changes at runtime. Type objects live for the whole process and their
-  `ArrayIndex` is assigned by rules parsing, so the data needs no allocation
-  hooks, no destructor hooks, and nothing written into a savegame. A container
-  would buy us lifecycle management we have no lifecycle to manage.
+  changes at runtime. Type objects live for the whole process, so the data needs
+  no allocation hooks, no destructor hooks, and nothing written into a savegame.
+  A container would buy us lifecycle management we have no lifecycle to manage.
+  (This was first written keyed by `ArrayIndex`, which silently missed every
+  lookup and made the whole DLL look inert — a pointer cannot be wrong at the
+  moment the engine hands it to us.)
 - **Practical:** Phobos PR **#2291** ("Rework the extension system into a mirror
   class hierarchy") removed `PrepareStream` / `LoadStatic` / `SaveStatic` from
   `Container`. The pattern the older sibling DLLs use no longer compiles against
@@ -99,9 +101,11 @@ picked so that **the guards we want run above us**:
 
 - Antares' once-only guard at `0x446AAF` still fires, so we never have to build
   a BuildingClass instance ext just to remember "already delivered".
-- Vanilla's `ScenarioInit` / `captured` / upgrade-level guards all run above
-  `0x446B16`, so a captured building still gives nothing and map load is still
-  silent.
+- Vanilla's `ScenarioInit` and `captured` guards run above `0x446AE3`, so a
+  captured building still gives nothing and map load is still silent.
+- **But not every guard is worth inheriting.** The check at `0x446AE3` suppresses
+  free units for *human players*; sitting below it meant only AI houses ever got
+  deliveries. We hook above that one deliberately. See HOOKS_LOG.md §3.
 - Antares' `InitialPayload` at `0x446EE2` still runs, because we hook one
   instruction later at `0x446EE8`.
 
@@ -138,15 +142,16 @@ per-pad `.Facing` (#9), and save/load of limbo entries.
 
 | Piece | State |
 |---|---|
-| `Delivery::Plan.h` + tests | ✅ 37/37 green on host |
-| BuildingType ext + INI parsing | ✅ written |
-| `GameMap` engine adapter | ⚠ written, never run |
-| Grand_Opening hooks (3) | ⚠ written, never run |
-| TechnoType ext + ManualFacing | ⚠ written, never run |
-| CI (Windows MSBuild + host tests) | ✅ workflow present, no remote yet |
+| `Delivery::Plan.h` + tests | ✅ 44/44 green on host |
+| BuildingType data + INI parsing | ✅ confirmed in-game |
+| `GameMap` engine adapter | ✅ confirmed in-game |
+| Grand_Opening hooks (3) | ✅ confirmed in-game |
+| TechnoType data + ManualFacing | ⚠ built, never exercised |
+| CI (Windows MSBuild + host tests) | ✅ green, artifacts published |
 
-Nothing in the engine half has executed. Every address is source-derived; none
-is empirically confirmed. TESTING.md leads with the two silent-failure modes.
+TESTING.md leads with the two silent-failure modes, and now also with the two
+**false-positive** modes that cost the most time here: a test whose result vanilla
+would produce anyway (#5), and a feature that only ever fires for AI houses.
 
 ## 8. Not done
 

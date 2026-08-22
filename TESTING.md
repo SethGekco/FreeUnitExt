@@ -33,7 +33,7 @@ cd ~/Claude/FreeUnitExt
 g++ -std=c++20 -Wall -Wextra -Isrc tests/plan_test.cpp -o /tmp/pt && /tmp/pt
 ```
 
-Expect `all checks passed` (37 checks). These cover direction parsing, ring
+Expect `all checks passed` (44 checks). These cover direction parsing, ring
 geometry, spacing, random resolution through the injected RNG, limbo bypass and
 per-entry failure isolation. They do **not** touch the engine.
 
@@ -53,7 +53,7 @@ vanilla types) and build the named buildings.
 | 5 | `GAREFN` | a harvester that **starts harvesting**, not guarding | Antares' mission fix reproduced |
 | 6 | `NAPOWR` | a second power plant appears within 3 cells | `Kind::Building`, foundation fit |
 | 7 | `GATECH` | no visible extra building, but Barracks units become buildable | `Limbo=yes` |
-| 8 | `NAHPAD` | pad comes with its aircraft even though `[General]SeparateAircraft=yes` | per-building override |
+| 8 | `AMRADR` | pad comes with its aircraft even though `[General]SeparateAircraft=yes` | per-building override |
 | 9 | `GAAIRC` | 4 aircraft, one per pad, not stacked on the centre | `SeparateAircraft.Types=` + `DockingOffsets` |
 
 ### The sharpest checks

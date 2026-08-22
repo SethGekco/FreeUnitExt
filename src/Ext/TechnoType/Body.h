@@ -20,8 +20,11 @@ struct ManualFacingData
     // change how it answers a move order.
     bool Enabled = false;
 
-    // When >= 0, the body turns at this rate instead of the type's ROT.
+    // When >= 0, turn at this rate instead of the type's ROT.
     int ROT = -1;
+
+    // Aim the turret (SecondaryFacing) instead of the hull (PrimaryFacing).
+    bool Turret = false;
 };
 
 class TechnoTypeExt

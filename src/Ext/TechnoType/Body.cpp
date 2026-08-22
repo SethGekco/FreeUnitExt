@@ -30,18 +30,22 @@ void TechnoTypeExt::LoadFromINI(TechnoTypeClass* pType, CCINIClass* pINI)
     const bool wasEnabled = existing ? existing->Enabled : false;
     const int  wasROT = existing ? existing->ROT : -1;
 
+    const bool wasTurret = existing ? existing->Turret : false;
+
     const bool enabled = pINI->ReadBool(section, "ManualFacing", wasEnabled);
     const int  rot = pINI->ReadInteger(section, "ManualFacing.ROT", wasROT);
+    const bool turret = pINI->ReadBool(section, "ManualFacing.Turret", wasTurret);
 
-    if (!enabled && rot < 0)
+    if (!enabled && rot < 0 && !turret)
         return;   // nothing of ours set on this type
 
     auto& data = Store.ForKey(pType);
     data.Enabled = enabled;
     data.ROT = rot;
+    data.Turret = turret;
 
-    Debug::Log("[FreeUnitExt] [%s] ManualFacing=%s ROT=%d\n",
-        section, enabled ? "yes" : "no", rot);
+    Debug::Log("[FreeUnitExt] [%s] ManualFacing=%s ROT=%d Turret=%s\n",
+        section, enabled ? "yes" : "no", rot, turret ? "yes" : "no");
 }
 
 // =============================================================================

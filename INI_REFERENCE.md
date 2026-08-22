@@ -176,9 +176,28 @@ ManualFacing.ROT=3                  ; optional; default is the type's ROT=
 |---|---|---|---|
 | `ManualFacing=` | boolean | `no` | a move order makes this unit turn to face the clicked cell instead of being discarded |
 | `ManualFacing.ROT=` | integer ≥ 0 | type's `ROT=` | turn rate for that rotation |
+| `ManualFacing.Turret=` | boolean | `no` | aim the **turret** (SecondaryFacing) instead of the hull (PrimaryFacing) |
 
-Only applies to units whose `Speed=0`. It is opt-in precisely so that existing
-Speed=0 vehicles in a mod do not silently change how they answer orders.
+```ini
+[MYBUNKER]
+Speed=0
+Turret=yes
+ManualFacing=yes
+ManualFacing.Turret=yes       ; hull stays put, turret tracks your clicks
+```
+
+`ManualFacing.Turret=yes` on a type with no turret logs a warning and aims the
+hull instead.
+
+> **This flag is the whole opt-in.** There is deliberately no hidden `Speed=0`
+> condition: setting `ManualFacing=` on a unit that *can* move will stop it
+> moving, because that is what the flag asks for. The intended use is `Speed=0`
+> emplacements, but the DLL does not second-guess you.
+
+**Test it on a unit that already exists at game start**, not one you build. A
+`Speed=0` vehicle from a war factory is unlimboed on the exit cell and then needs
+a move mission to drive clear — with `Speed=0` it never leaves and can block the
+factory permanently.
 
 `ManualFacing.ROT=` matters when the type has `ROT=0`: the body would otherwise
 snap instantly to the new angle rather than swinging around.

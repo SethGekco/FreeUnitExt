@@ -26,6 +26,7 @@
 #include <TechnoClass.h>
 #include <TechnoTypeClass.h>
 #include <UnitClass.h>
+#include <GeneralDefinitions.h>
 #include <Helpers/Cast.h>
 #include <Utilities/Debug.h>
 #include <Utilities/Macro.h>
@@ -112,4 +113,61 @@ DEFINE_HOOK(0x4C7462, FreeUnitExt_EventClass_Execute_ManualFacing, 0x5)
     // immobile unit spends the rest of its life "moving" to a cell it can never
     // reach, which blocks it from acquiring targets.
     return SkipGameCode;
+}
+
+/*
+ * =============================================================================
+ * Make the click reachable — UnitClass::What_Action @ 0x740801, size 0x5
+ *
+ *   740801  8b 44 24 30     mov eax, [esp+0x30]   ; the decided Action
+ *   740805  5f              pop edi
+ *
+ * The delivery hook above was firing but only ever saw `mission 16` (Unload,
+ * i.e. deploy) — right-clicking a CELL with an immobile unit produced no event
+ * at all. The order is suppressed before it is ever sent: What_Action (a.k.a.
+ * MouseOverCell, 0x7404B0) decides what a click means, and for a unit that
+ * cannot move it never resolves to Action::Move, so no MegaMission is queued
+ * and there is nothing downstream to reinterpret.
+ *
+ * `0x740801` is the function's single final return: it loads the decided Action
+ * out of [ESP+0x30] into EAX and falls into the epilogue. Overriding it to
+ * Action::Move makes the click both LOOK actionable (move cursor) and actually
+ * dispatch, which is what feeds the 0x4C7462 hook.
+ *
+ * ESI = UnitClass*.
+ *
+ * Interaction with Phobos' DisallowMoving (0x740709 / 0x740744): those hooks
+ * force Action::NoMove for units it considers immobile, and one of their exits
+ * (`ReturnResult`) jumps straight to 0x740801 — so our hook still runs and gets
+ * the last word, which is the behaviour we want for a type that explicitly asked
+ * for ManualFacing. Their other exits (0x740769 / 0x7407D2) return NoMove
+ * directly and bypass us; a type that is BOTH Phobos-DisallowMoving and
+ * ManualFacing may therefore still be suppressed. Untested combination.
+ * =============================================================================
+ */
+DEFINE_HOOK(0x740801, FreeUnitExt_UnitClass_WhatAction_ManualFacing, 0x5)
+{
+    GET(UnitClass*, pThis, ESI);
+
+    if (!pThis)
+        return 0;
+
+    auto const pType = pThis->GetTechnoType();
+    if (!pType)
+        return 0;
+
+    auto const pData = TechnoTypeExt::Find(pType);
+    if (!pData || !pData->Enabled)
+        return 0;
+
+    GET_STACK(Action, decided, 0x30);
+
+    // Only rewrite the "you cannot go there" answers. Attack, Enter, Capture,
+    // Select and friends must keep working normally — ManualFacing is about
+    // reclaiming the otherwise-dead move click, not about hijacking every order.
+    if (decided != Action::NoMove && decided != Action::None)
+        return 0;
+
+    R->EAX(Action::Move);
+    return 0x740805;   // straight into the epilogue, EAX preserved
 }

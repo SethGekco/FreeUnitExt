@@ -37,6 +37,31 @@ default; write `-` to skip an entry explicitly.
 | `FreeUnit.Limbo=` | boolean | `no` | deliver into limbo instead of onto the map (buildings only) |
 | `FreeUnit.Range=` | integer ≥ 1 | `1` | how far a *building* entry may be placed from the parent |
 
+### `FreeUnit.OnlyBuilt=` (boolean, default `yes`)
+
+Deliver only when this building was genuinely **built**, not when it was itself
+delivered by another building's list.
+
+```ini
+[NAPOWR]
+FreeUnit.Buildings=NAPOWR     ; a power plant that comes with a power plant
+FreeUnit.OnlyBuilt=yes        ; ...but the delivered one does NOT bring another
+```
+
+Without it that example is an **infinite chain**: unlimboing a delivered building
+runs its Grand_Opening immediately, which delivers another, forever. The default
+is `yes` because the runaway case hangs the game and the recursive case has no
+known use.
+
+Named to match `Host.OnlyBuilt=` in the GiftBox/Host DLL, and it means the same
+thing there.
+
+`FreeUnit.OnlyBuilt=no` re-enables chaining, but a **hard depth cap of 4** still
+applies — a runaway chain aborts and logs rather than locking the game up.
+
+Note that map-preplaced buildings never deliver regardless: vanilla's own
+`ScenarioInit` guard above our hook already suppresses that.
+
 ```ini
 [NAHAND]
 FreeUnit=CONSCRIPT,CONSCRIPT,CONSCRIPT,CONSCRIPT

@@ -50,6 +50,16 @@ struct BuildingTypeData
     bool SeparateAircraft_Set = false;
     bool SeparateAircraft = false;
 
+    // Only deliver when this building was genuinely BUILT — not when it was
+    // itself delivered by another building's FreeUnit list.
+    //
+    // Without this, [NAPOWR]FreeUnit.Buildings=NAPOWR is an infinite chain: the
+    // delivered plant's Grand_Opening fires during our own Unlimbo and delivers
+    // another, forever. Named to match Host.OnlyBuilt= in the GiftBox/Host DLL.
+    // Defaults to YES because the runaway case is catastrophic and the
+    // recursive case has no known use.
+    bool OnlyBuilt = true;
+
     bool HasDelivery() const
     {
         return !this->FreeUnits.empty() || !this->Neighbours.empty();

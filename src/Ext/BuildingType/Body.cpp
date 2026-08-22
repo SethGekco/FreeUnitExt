@@ -317,6 +317,8 @@ void BuildingTypeExt::LoadFromINI(BuildingTypeClass* pThis, CCINIClass* pINI)
         data.SeparateAircraft = pINI->ReadBool(section, "SeparateAircraft", false);
     }
 
+    data.OnlyBuilt = pINI->ReadBool(section, "FreeUnit.OnlyBuilt", data.OnlyBuilt);
+
     ParseDeliveryList(data.PadAircraft, pINI, section,
         "SeparateAircraft.Types", "SeparateAircraft");
 
@@ -450,12 +452,12 @@ bool GameMap::place(Delivery::Entry const& entry, Delivery::Offset offset, int f
     target.X = short(target.X + offset.X);
     target.Y = short(target.Y + offset.Y);
 
-    // ScenarioInit suppresses the engine's placement sanity checks during
-    // creation + unlimbo. Vanilla's own FreeUnit path brackets its aircraft
-    // spawn the same way (0x446F21 / 0x446FB0); see HOOKS_LOG.md.
-    ++Unsorted::ScenarioInit;
+    // No ScenarioInit bracket anywhere in the foot path: vanilla's free-unit
+    // block (0x446AA9-0x446EE1) touches the flag exactly zero times. Only the
+    // AIRCRAFT block does (0x446F21/0x446FB0), because a pad aircraft is
+    // supposed to sit on top of the building. Matching vanilla here removes the
+    // last behavioural difference between our spawner and the engine's.
     auto const pObject = pType->CreateObject(pOwner);
-    --Unsorted::ScenarioInit;
 
     if (!pObject)
         return false;
@@ -485,8 +487,12 @@ bool GameMap::place(Delivery::Entry const& entry, Delivery::Offset offset, int f
         return false;
     }
 
-    Debug::Log("[FreeUnitExt]   placed %s at cell (%d,%d) offset (%+d,%+d) facing %d\n",
-        pType->ID, int(target.X), int(target.Y), offset.X, offset.Y, facing);
+    auto const actual = CellClass::Coord2Cell(pObject->GetCoords());
+    Debug::Log("[FreeUnitExt]   placed %s want cell (%d,%d) offset (%+d,%+d) facing %d "
+        "| engine says cell (%d,%d) alive=%d onMap=%d inLimbo=%d\n",
+        pType->ID, int(target.X), int(target.Y), offset.X, offset.Y, facing,
+        int(actual.X), int(actual.Y),
+        int(pObject->IsAlive), int(pObject->IsOnMap), int(pObject->InLimbo));
 
     // A free unit with nothing to do should guard its birthplace. Harvesters
     // are the one type with a better default — the same distinction Antares

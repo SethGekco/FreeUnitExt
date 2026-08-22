@@ -1,8 +1,8 @@
 /*
  * FreeUnitExt — BuildingTypeClass INI hook.
  *
- * Only one site is needed. Because our data is ArrayIndex-keyed and lives for
- * the process (see src/Ext/Store.h), there is no container to allocate on
+ * Only one site is needed. Because our data is keyed by type pointer and lives
+ * for the process (see src/Ext/Store.h), there is no container to allocate on
  * construction, nothing to free on destruction, and nothing to serialise into a
  * savegame.
  *

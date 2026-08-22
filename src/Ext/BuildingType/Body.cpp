@@ -30,7 +30,7 @@
 #include <cstdlib>
 #include <string>
 
-IndexedStore<BuildingTypeData> BuildingTypeExt::Store;
+PointerStore<BuildingTypeData> BuildingTypeExt::Store;
 
 // =============================================================================
 // Parsing helpers
@@ -292,7 +292,7 @@ void BuildingTypeExt::LoadFromINI(BuildingTypeClass* pThis, CCINIClass* pINI)
     if (!pINI->GetSection(section))
         return;
 
-    auto& data = BuildingTypeExt::Store.ForIndex(pThis->ArrayIndex);
+    auto& data = BuildingTypeExt::Store.ForKey(pThis);
 
     // --- FreeUnit ------------------------------------------------------------
     // Vanilla already parsed FreeUnit= into pThis->FreeUnit (a UnitTypeClass*,
@@ -343,6 +343,20 @@ void BuildingTypeExt::LoadFromINI(BuildingTypeClass* pThis, CCINIClass* pINI)
                 "NumberOfDocks=%d; it will spawn but has no dock to return to\n",
                 section, unsigned(i), docks);
         }
+    }
+
+    if (!data.IsVanilla())
+    {
+        // The failure this catches: if the store is empty at delivery time,
+        // every hook falls through to vanilla and the DLL looks inert with no
+        // error anywhere. One line per configured building makes that visible.
+        Debug::Log("[FreeUnitExt] parsed [%s]: %u free unit(s), %u neighbour(s), "
+            "%u pad aircraft, SeparateAircraft%s\n",
+            section,
+            unsigned(data.FreeUnits.Entries.size()),
+            unsigned(data.Neighbours.Entries.size()),
+            unsigned(data.PadAircraft.Entries.size()),
+            data.SeparateAircraft_Set ? (data.SeparateAircraft ? "=yes" : "=no") : " unset");
     }
 
     if (!data.PadAircraft.empty() && docks <= 0)

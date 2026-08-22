@@ -1,51 +1,46 @@
 #pragma once
 /*
- * FreeUnitExt — ArrayIndex-keyed type data.
+ * FreeUnitExt — per-type data storage.
  *
- * We deliberately do NOT use Phobos' Container/Extension machinery.
+ * We deliberately do NOT use Phobos' Container/Extension machinery: Phobos
+ * PR #2291 removed PrepareStream/LoadStatic/SaveStatic from Container, and we
+ * have no lifecycle to manage anyway — everything stored here comes from INI
+ * and never changes at runtime.
  *
- * Why: Phobos PR #2291 ("Rework the extension system into a mirror class
- * hierarchy") removed PrepareStream/LoadStatic/SaveStatic from Container, so the
- * pattern the older sibling DLLs use no longer compiles against develop. More
- * importantly, we do not need any of it — everything this DLL stores is derived
- * from INI and nothing else:
+ * KEYED BY TYPE POINTER, deliberately.
  *
- *   - Type objects live for the whole process and their ArrayIndex is assigned
- *     by rules parsing, so an ArrayIndex-keyed vector is stable without being
- *     serialised.
- *   - Nothing here changes at runtime, so there is no per-instance state to
- *     save into a savegame.
+ * This started out keyed by ArrayIndex, which was wrong in a way that produced
+ * no crash and no log line: every lookup simply missed, so all three hooks fell
+ * through to vanilla and the DLL looked inert. Keying by the type object's own
+ * address removes the assumption entirely — a pointer is unambiguous the moment
+ * we are handed one, whereas ArrayIndex is only meaningful once the engine has
+ * assigned it, and we never verified when that happens relative to LoadFromINI.
  *
- * That removes an entire class of failure (stale ext pointers after a load, a
- * container API that moves under us) at the cost of one indirection.
+ * Type objects live for the whole process, so the keys stay valid. The one
+ * thing this gives up is surviving a savegame that reconstructs type objects at
+ * new addresses; that is untested either way and is tracked in HOOKS_LOG.md.
  */
-#include <vector>
+#include <unordered_map>
 
 template <typename TData>
-class IndexedStore
+class PointerStore
 {
 public:
-    // Get-or-create. Called from the LoadFromINI hooks, where the index is the
-    // type's own ArrayIndex.
-    TData& ForIndex(int index)
+    // Get-or-create. Called from the LoadFromINI hooks.
+    TData& ForKey(const void* key)
     {
-        if (index < 0)
-            index = 0;
-
-        if (std::size_t(index) >= this->Items.size())
-            this->Items.resize(std::size_t(index) + 1);
-
-        return this->Items[std::size_t(index)];
+        return this->Items[key];
     }
 
-    // Lookup that never allocates: returns null for a type we never parsed.
-    TData const* TryGet(int index) const
+    // Lookup that never allocates: null for a type we never parsed.
+    TData const* TryGet(const void* key) const
     {
-        return index >= 0 && std::size_t(index) < this->Items.size()
-            ? &this->Items[std::size_t(index)]
-            : nullptr;
+        auto const it = this->Items.find(key);
+        return it != this->Items.end() ? &it->second : nullptr;
     }
+
+    std::size_t size() const { return this->Items.size(); }
 
 private:
-    std::vector<TData> Items;
+    std::unordered_map<const void*, TData> Items;
 };

@@ -6,8 +6,7 @@
  * right-clicking a direction, the way a turret aims. On its own that is far too
  * small to justify a DLL, which is why it ships here.
  *
- * Stored per concrete type array, because ArrayIndex is per-array — a
- * UnitTypeClass and an InfantryTypeClass can both be index 3.
+ * Keyed by type pointer — see src/Ext/Store.h for why not ArrayIndex.
  */
 #include <Ext/Store.h>
 
@@ -34,15 +33,6 @@ public:
     static ManualFacingData const* Find(TechnoTypeClass const* pType);
 
 private:
-    // One store per array: Unit, Infantry, Aircraft, Building.
-    static IndexedStore<ManualFacingData> UnitStore;
-    static IndexedStore<ManualFacingData> InfantryStore;
-    static IndexedStore<ManualFacingData> AircraftStore;
-    static IndexedStore<ManualFacingData> BuildingStore;
+    static PointerStore<ManualFacingData> Store;
 
-    static IndexedStore<ManualFacingData>* StoreFor(TechnoTypeClass const* pType);
-
-    // ArrayIndex is declared per concrete leaf type, not on TechnoTypeClass,
-    // so reaching it needs a WhatAmI-driven downcast.
-    static int IndexOf(TechnoTypeClass const* pType);
 };

@@ -86,7 +86,7 @@ struct BuildingTypeData
 class BuildingTypeExt
 {
 public:
-    static IndexedStore<BuildingTypeData> Store;
+    static PointerStore<BuildingTypeData> Store;
 
     // Called from the BuildingTypeClass::LoadFromINI hook, once per type per
     // INI file the engine reads (rules, game mode, scenario, map).
@@ -94,7 +94,7 @@ public:
 
     static BuildingTypeData const* Find(BuildingTypeClass const* pType)
     {
-        return pType ? Store.TryGet(pType->ArrayIndex) : nullptr;
+        return pType ? Store.TryGet(pType) : nullptr;
     }
 
     // Does this building deliver free aircraft onto its docks?

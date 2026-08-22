@@ -36,6 +36,7 @@
 #include <UnitTypeClass.h>
 #include <Unsorted.h>
 #include <Helpers/Cast.h>
+#include <Utilities/Debug.h>
 #include <Utilities/Macro.h>
 
 namespace
@@ -126,10 +127,12 @@ DEFINE_HOOK(0x446AB5, BuildingClass_GrandOpening_FreeUnitGate, 0x8)
         return ContinueFreeUnitGuards;
 
     auto const pData = BuildingTypeExt::Find(pThis->Type);
+    const bool ours = pData && pData->HasDelivery();
 
-    return (pData && pData->HasDelivery())
-        ? ContinueFreeUnitGuards
-        : PadAircraftBlock;
+    Debug::Log("[FreeUnitExt] gate [%s]: vanilla FreeUnit=null, ours=%s\n",
+        pThis->Type->ID, ours ? "yes" : "NO DATA");
+
+    return ours ? ContinueFreeUnitGuards : PadAircraftBlock;
 }
 
 // =============================================================================
@@ -160,7 +163,11 @@ DEFINE_HOOK(0x446B16, BuildingClass_GrandOpening_Deliver, 0x7)
 
     auto const pData = BuildingTypeExt::Find(pThis->Type);
     if (!pData || !pData->HasDelivery())
+    {
+        Debug::Log("[FreeUnitExt] deliver [%s]: no data, falling through to vanilla\n",
+            pThis->Type->ID);
         return 0;   // vanilla FreeUnit= only — leave the engine (and Phobos) alone
+    }
 
     // Units first, then neighbouring buildings, in one ordered list so spacing
     // is tracked across both.
@@ -168,10 +175,14 @@ DEFINE_HOOK(0x446B16, BuildingClass_GrandOpening_Deliver, 0x7)
 
     GameMap map(pThis, list);
 
-    Delivery::resolve(
+    auto const result = Delivery::resolve(
         list.Entries,
         map,
         int(pThis->PrimaryFacing.Current().GetDir()));
+
+    Debug::Log("[FreeUnitExt] deliver [%s]: %d delivered, %d failed (of %u)\n",
+        pThis->Type->ID, result.Delivered, result.Failed,
+        unsigned(list.Entries.size()));
 
     return PadAircraftBlock;
 }
@@ -202,7 +213,15 @@ DEFINE_HOOK(0x446EE8, BuildingClass_GrandOpening_PadAircraft, 0x6)
 
     // Nothing of ours to say: let the vanilla block decide exactly as before.
     if (!pData || (!pData->SeparateAircraft_Set && pData->PadAircraft.empty()))
+    {
+        Debug::Log("[FreeUnitExt] pads [%s]: no data, falling through to vanilla\n",
+            pType->ID);
         return 0;
+    }
+
+    Debug::Log("[FreeUnitExt] pads [%s]: captured=%d delivers=%d types=%u docks=%d\n",
+        pType->ID, int(captured), int(BuildingTypeExt::DeliversPadAircraft(pType)),
+        unsigned(pData->PadAircraft.Entries.size()), pType->NumberOfDocks);
 
     if (captured || !BuildingTypeExt::DeliversPadAircraft(pType))
         return GrandOpeningEpilogue;

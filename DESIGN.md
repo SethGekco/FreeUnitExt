@@ -129,7 +129,12 @@ seam, so it is sync-safe by construction.
 
 ## 7. Status
 
-Phase 1 **code-complete, never compiled on Windows.**
+Phase 1 **working in-game** (2026-08-21). Confirmed by Rex: four infantry per
+barracks for the human player, four aircraft on four numbered pads, and
+`FreeUnit.Buildings=` delivering exactly one neighbour instead of chaining.
+
+Still unconfirmed in-game: `ManualFacing=`, limbo delivery (#7), `.Spacing` (#2),
+per-pad `.Facing` (#9), and save/load of limbo entries.
 
 | Piece | State |
 |---|---|

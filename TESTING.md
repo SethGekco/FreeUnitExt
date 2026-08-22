@@ -58,9 +58,18 @@ vanilla types) and build the named buildings.
 
 ### The sharpest checks
 
-**#5** is the correctness canary: our takeover *bypasses* Antares' mission fix at
-`0x446E9F`, so if the harvester sits there guarding instead of harvesting, our
-reproduction of it in `GameMap::place` is wrong.
+> ⚠ **#5 is a WEAK test — do not treat it as a pass.** `FreeUnit=CMIN` is a valid
+> VehicleType, so vanilla spawns it and Antares sets the harvest mission whether
+> or not this DLL is loaded. A harvesting harvester therefore proves nothing; it
+> looked like a pass for three debugging rounds while the DLL was doing nothing.
+> Check `debug.log` for a `deliver [GAREFN]` line to know it was actually ours.
+
+**#1 is the real canary.** `E1` is infantry, which vanilla's `FreeUnit=` cannot
+express at all, so four GIs appearing can only be us.
+
+**Always check the owner.** Free units are suppressed for human players by the
+vanilla guard at `0x446AE3` (see HOOKS_LOG.md), so a feature can look like it
+works while only ever firing for AI houses. Watching an AI base is not a test.
 
 **#9** is the one most likely to fail. It depends on `DockingOffsets` actually
 being populated; if all four aircraft stack on the building's centre, the vector

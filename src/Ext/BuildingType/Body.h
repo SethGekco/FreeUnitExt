@@ -22,6 +22,19 @@
 class BuildingClass;
 class CCINIClass;
 
+// Buildings this DLL delivered, so their own Grand_Opening can tell "delivered"
+// from "built". A depth counter does NOT work here: Grand_Opening is DEFERRED,
+// not called inside our Unlimbo, so by the time it runs the delivery that
+// created the building has long since returned. Identity is the only signal
+// that survives the gap.
+namespace DeliveredBuildings
+{
+    void Mark(const void* pBuilding);
+
+    // Consumes the mark: a building only gets one Grand_Opening as a delivery.
+    bool ClaimWasDelivered(const void* pBuilding);
+}
+
 // One parsed delivery list. Entries[i].TypeIndex indexes into Types, which keeps
 // Delivery::Plan.h free of engine types while the adapter still gets a pointer.
 struct DeliveryList

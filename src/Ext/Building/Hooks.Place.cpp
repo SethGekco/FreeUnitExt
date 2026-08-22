@@ -52,15 +52,13 @@ namespace
     };
 
     /*
-     * Recursion guard for deliveries.
+     * Last-resort stop for a runaway chain.
      *
-     * Unlimboing a delivered BUILDING runs its Grand_Opening synchronously, so
-     * [NAPOWR]FreeUnit.Buildings=NAPOWR chains forever. Depth is what tells a
-     * built building apart from a delivered one: anything created while a
-     * delivery is in flight was not built by a player or the AI.
-     *
-     * The hard cap is a separate belt-and-braces stop, so even OnlyBuilt=no
-     * cannot hang the game.
+     * NOTE: depth alone does NOT identify a delivered building. Grand_Opening is
+     * DEFERRED — it runs frames after the Unlimbo that created the building, by
+     * which time depth is back to 0. That is why FreeUnit.OnlyBuilt= is enforced
+     * by identity (DeliveredBuildings) and not here. This counter only catches a
+     * genuinely re-entrant delivery, so the game cannot hang outright.
      */
     int DeliveryDepth = 0;
     constexpr int MaxDeliveryDepth = 4;
@@ -151,12 +149,6 @@ DEFINE_HOOK(0x446AB5, BuildingClass_GrandOpening_FreeUnitGate, 0x8)
     auto const pData = BuildingTypeExt::Find(pThis->Type);
     const bool ours = pData && pData->HasDelivery();
 
-    if (ours && pData->OnlyBuilt && DeliveryDepth > 0)
-    {
-        Debug::Log("[FreeUnitExt] gate [%s]: skipped, delivered not built "
-            "(FreeUnit.OnlyBuilt=yes, depth %d)\n", pThis->Type->ID, DeliveryDepth);
-        return PadAircraftBlock;
-    }
 
     Debug::Log("[FreeUnitExt] gate [%s]: vanilla FreeUnit=null, ours=%s\n",
         pThis->Type->ID, ours ? "yes" : "NO DATA");
@@ -198,10 +190,15 @@ DEFINE_HOOK(0x446B16, BuildingClass_GrandOpening_Deliver, 0x7)
         return 0;   // vanilla FreeUnit= only — leave the engine (and Phobos) alone
     }
 
-    if (pData->OnlyBuilt && DeliveryDepth > 0)
+    // Identity, not depth: Grand_Opening is deferred, so a delivered building
+    // opens long after the delivery that created it has returned. The mark is
+    // consumed here whether or not OnlyBuilt is set, so it can never go stale.
+    const bool wasDelivered = DeliveredBuildings::ClaimWasDelivered(pThis);
+
+    if (wasDelivered && pData->OnlyBuilt)
     {
-        Debug::Log("[FreeUnitExt] deliver [%s]: skipped, delivered not built "
-            "(FreeUnit.OnlyBuilt=yes, depth %d)\n", pThis->Type->ID, DeliveryDepth);
+        Debug::Log("[FreeUnitExt] deliver [%s]: skipped, this one was DELIVERED "
+            "not built (FreeUnit.OnlyBuilt=yes)\n", pThis->Type->ID);
         return PadAircraftBlock;
     }
 

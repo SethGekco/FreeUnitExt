@@ -28,9 +28,31 @@
 #include <Utilities/Debug.h>
 
 #include <cstdlib>
+#include <unordered_set>
 #include <string>
 
 PointerStore<BuildingTypeData> BuildingTypeExt::Store;
+
+namespace DeliveredBuildings
+{
+    namespace { std::unordered_set<const void*> Marks; }
+
+    void Mark(const void* pBuilding)
+    {
+        if (pBuilding)
+            Marks.insert(pBuilding);
+    }
+
+    bool ClaimWasDelivered(const void* pBuilding)
+    {
+        // Erase on claim so the mark cannot outlive the delivery it describes.
+        // A delivered building destroyed before it ever opens leaves a stale
+        // entry; the worst case is one future building reusing that address
+        // skipping its delivery once. Bounded, and far cheaper than a full
+        // BuildingClass instance extension.
+        return Marks.erase(pBuilding) > 0;
+    }
+}
 
 // =============================================================================
 // Parsing helpers
@@ -487,12 +509,25 @@ bool GameMap::place(Delivery::Entry const& entry, Delivery::Offset offset, int f
         return false;
     }
 
+    if (entry.What == Delivery::Kind::Building)
+        DeliveredBuildings::Mark(pObject);
+
     auto const actual = CellClass::Coord2Cell(pObject->GetCoords());
     Debug::Log("[FreeUnitExt]   placed %s want cell (%d,%d) offset (%+d,%+d) facing %d "
         "| engine says cell (%d,%d) alive=%d onMap=%d inLimbo=%d\n",
         pType->ID, int(target.X), int(target.Y), offset.X, offset.Y, facing,
         int(actual.X), int(actual.Y),
         int(pObject->IsAlive), int(pObject->IsOnMap), int(pObject->InLimbo));
+
+    Debug::Log("[FreeUnitExt]     owner=%s (idx %d) currentPlayer=%s (idx %d) "
+        "whatAmI=%d footCast=%s\n",
+        pOwner && pOwner->Type ? pOwner->Type->ID : "?",
+        pOwner ? pOwner->ArrayIndex : -1,
+        HouseClass::CurrentPlayer && HouseClass::CurrentPlayer->Type
+            ? HouseClass::CurrentPlayer->Type->ID : "?",
+        HouseClass::CurrentPlayer ? HouseClass::CurrentPlayer->ArrayIndex : -1,
+        int(pObject->WhatAmI()),
+        abstract_cast<FootClass*>(pObject) ? "ok" : "FAILED");
 
     // A free unit with nothing to do should guard its birthplace. Harvesters
     // are the one type with a better default — the same distinction Antares

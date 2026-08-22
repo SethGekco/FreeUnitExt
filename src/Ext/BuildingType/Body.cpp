@@ -575,10 +575,28 @@ bool GameMap::placeLimbo(Delivery::Entry const& entry)
     pBuilding->IsAlive = true;
     pBuilding->IsOnMap = true;
 
+    // MUST be marked BEFORE DiscoveredBy.
+    //
+    // DiscoveredBy calls BuildingClass::Place — which IS Grand_Opening, the
+    // function this DLL hooks — synchronously, right here. Without the mark, a
+    // limbo-delivered building immediately runs its own delivery: a limbo
+    // GAPILE would spawn its four free GIs onto the map from a structure that
+    // is supposed to be invisible. Unlike the on-map path, where Grand_Opening
+    // is deferred, this one is re-entrant within our own call.
+    DeliveredBuildings::Mark(pBuilding);
+
     if (SessionClass::IsCampaign())
         pBuilding->DiscoveredBy(HouseClass::CurrentPlayer);
 
     pBuilding->DiscoveredBy(pOwner);
+
+    // Re-mark: the claim is one-shot, and in campaign DiscoveredBy runs TWICE
+    // (CurrentPlayer, then the owner), so the first Grand_Opening consumes the
+    // mark and the second would be unguarded. A limbo building must never
+    // deliver, ever, so keep it marked for good rather than for one call.
+    // (Antares' once-only guard would usually cover this, but relying on
+    // another DLL for correctness is not a guarantee — we run without it.)
+    DeliveredBuildings::Mark(pBuilding);
 
     pOwner->RegisterGain(pBuilding, false);
     pOwner->RecheckTechTree = true;

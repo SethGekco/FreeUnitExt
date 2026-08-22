@@ -32,6 +32,11 @@ namespace DeliveredBuildings
     void Mark(const void* pBuilding);
 
     // Consumes the mark: a building only gets one Grand_Opening as a delivery.
+    // Callers that must stay exempt permanently (limbo buildings) re-Mark.
+    //
+    // Staleness tradeoff: a marked building destroyed before it opens leaves an
+    // entry behind, so a later building reusing that address would skip its
+    // delivery once. Bounded, and far cheaper than a BuildingClass instance ext.
     bool ClaimWasDelivered(const void* pBuilding);
 }
 

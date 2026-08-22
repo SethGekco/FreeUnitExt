@@ -279,7 +279,47 @@ rules-defined free units.
 
 ---
 
-## 7. Open / unverified
+## 7. Audit of the never-executed paths
+
+Reviewed after four silent bugs were found in the paths that *had* run.
+
+**`ManualFacing` — seam verified sound, no change needed.**
+`UnitClass::MouseOverCell` @ `0x7404B0`–`0x74080C` (the function that decides
+what a cell click does) contains **no read of `TechnoTypeClass::Speed`**, which
+lives at `+0x678` (derived from the `Speed=` tag parse at `0x71464C`, which
+stores to `[ebp+0x678]`). So a `Speed=0` unit produces the same click Action as
+any other and the MegaMission move event is emitted normally — our `0x4C7462`
+hook will see it. No `MouseOverCell` hook is required.
+
+The skip target `0x4C74C0` was also verified: it is the `EventClass::Execute`
+epilogue (`pop edi/esi/ebp/ebx; add esp,0x370; ret`). Our 5 stolen bytes are
+`mov eax,[edi]` + `push ebx` + `mov ecx,edi`; returning to the epilogue skips the
+`push ebx` and the `call [eax+0x3c8]` that would have consumed it, so the stack
+stays balanced.
+
+**`placeLimbo` — REAL BUG FOUND (fixed).**
+Phobos' `LimboCreate` carries the comment *"BuildingClass::Place is already
+called in DiscoveredBy"*, and `BuildingClass::Place` **is** `Grand_Opening` —
+Ares/Antares name it `Place`, Phobos names it `GrandOpening`, same function.
+
+So `DiscoveredBy` re-enters our own delivery hooks **synchronously**, and a
+limbo-delivered building would immediately run its own `FreeUnit=` list. With
+the shipped test rules that is live: `[GATECH]` limbo-delivers a `GAPILE`, whose
+list is `E1,E1,E1,E1` — four GIs would spawn onto the map from a structure that
+is supposed to be invisible.
+
+Fixed by marking the building **before** `DiscoveredBy`, and re-marking after,
+because `ClaimWasDelivered` is one-shot while campaign calls `DiscoveredBy`
+twice (CurrentPlayer, then owner).
+
+Note the asymmetry worth remembering: on the **on-map** path `Grand_Opening` is
+*deferred* (which is why a depth counter failed there), but through
+`DiscoveredBy` it is *re-entrant within our own call*. Same function, two
+different timing behaviours depending on how the building was created.
+
+---
+
+## 8. Open / unverified
 
 1. `[ebp+0x300]` and the type vtable slot `+0xAC` in the `0x446AE3`–`0x446B10`
    guard are not fully decoded. We inherit the guard rather than reason about it,

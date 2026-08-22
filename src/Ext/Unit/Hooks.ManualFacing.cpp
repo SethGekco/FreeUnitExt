@@ -136,6 +136,23 @@ DEFINE_HOOK(0x4C7462, FreeUnitExt_EventClass_Execute_ManualFacing, 0x5)
  *
  * ESI = UnitClass*.
  *
+ * ⚠ WE WRITE THE STACK SLOT, NOT EAX, AND RETURN 0.
+ *
+ * The obvious-looking version — set EAX and `return 0x740805` to land on the
+ * `pop edi` — CRASHES. A size-5 hook here patches 0x740801..0x740805 inclusive,
+ * so 0x740805 is the LAST BYTE OF SYRINGE'S OWN JMP. Jumping there executes a
+ * fragment of the patch as an instruction and control lands in nowhere:
+ * observed live as `Exception code: C0000005 at 00005280` with EAX=00000001,
+ * that EAX being the Action::Move this hook had just written.
+ *
+ * Returning 0 re-executes the stolen `mov eax, [esp+0x30]`, which is exactly
+ * the load we want — so putting the value in the slot lets the original
+ * instruction do the work and no jump into the patched range is needed.
+ *
+ * General rule: never return an address inside your own hook's stolen-byte
+ * range. The safe targets are the hook address itself (via 0) or something at
+ * or past address+size.
+ *
  * Interaction with Phobos' DisallowMoving (0x740709 / 0x740744): those hooks
  * force Action::NoMove for units it considers immobile, and one of their exits
  * (`ReturnResult`) jumps straight to 0x740801 — so our hook still runs and gets
@@ -160,7 +177,7 @@ DEFINE_HOOK(0x740801, FreeUnitExt_UnitClass_WhatAction_ManualFacing, 0x5)
     if (!pData || !pData->Enabled)
         return 0;
 
-    GET_STACK(Action, decided, 0x30);
+    REF_STACK(Action, decided, 0x30);
 
     // Only rewrite the "you cannot go there" answers. Attack, Enter, Capture,
     // Select and friends must keep working normally — ManualFacing is about
@@ -168,6 +185,6 @@ DEFINE_HOOK(0x740801, FreeUnitExt_UnitClass_WhatAction_ManualFacing, 0x5)
     if (decided != Action::NoMove && decided != Action::None)
         return 0;
 
-    R->EAX(Action::Move);
-    return 0x740805;   // straight into the epilogue, EAX preserved
+    decided = Action::Move;
+    return 0;   // stolen `mov eax,[esp+0x30]` now loads Move for us
 }

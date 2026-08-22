@@ -52,3 +52,5 @@ jobs:
         run: |
           g++ -std=c++20 -Wall -Wextra -Isrc tests/plan_test.cpp -o rt
           ./rt
+      - name: Check no hook returns into its own patched bytes
+        run: python3 tests/check_hook_returns.py

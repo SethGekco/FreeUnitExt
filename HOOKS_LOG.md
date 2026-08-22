@@ -293,3 +293,62 @@ rules-defined free units.
 5. Whether `DockingOffsets` is populated for all pad buildings, or only those
    that declare `DockingOffset0`-style keys. We fall back to the building's
    centre when the vector is short.
+
+---
+
+## 8. Chain-guard for unit-level delivery (`OnlyBuilt`, the mark-built pattern)
+
+**Context.** As of this writing the delivery trigger is *building* `Grand_Opening`
+only (`0x446AE3`); a delivered unit has no trigger, so it cannot re-deliver. The
+existing `FreeUnit.OnlyBuilt=` is enforced for **buildings** by identity: a
+delivered building is stamped (`DeliveredBuildings::Mark`, Body.cpp) and its own
+Grand_Opening consumes the stamp (`ClaimWasDelivered`, Hooks.Place.cpp). That
+works because Grand_Opening is *deferred* — the stamp is set frames before it is
+checked.
+
+**The gap.** Any *unit-level* delivery feature (a unit that spawns units when it
+is built) has no equivalent stamp. Symptom observed while developing such a tag:
+`FreeUnit=E1,E1,E1,E1`-style delivery from a unit produces the four E1, and those
+E1 then deliver their own four, ignoring `OnlyBuilt` — because nothing marks a
+delivered unit as "not built," so the guard cannot distinguish a built E1 from a
+delivered one.
+
+**Do NOT copy the building pattern verbatim for units.** `DeliveredBuildings`
+marks the *delivered* object and works only because the building trigger
+(Grand_Opening) is deferred. A unit-creation trigger fires *synchronously as the
+unit is born*, so a mark-delivered stamp races the trigger — the child can
+re-deliver before it is stamped.
+
+**Use mark-BUILT instead (fail-closed, race-free, DLL-compatible).** Invert the
+default: nothing delivers unless it is known-built.
+
+- Add a "built techno" identity set (an `unordered_set<TechnoClass*>`, same shape
+  as `DeliveredBuildings`, not the Phobos container).
+- **Stamp at factory ejection — `BuildingClass::KickOutUnit`:**
+  `0x444131` (InfantryType / E1), `0x444119` (UnitType / vehicles),
+  `0x443CCA` (AircraftType). A unit that leaves a factory is "built." These
+  addresses are already hooked by Phobos, so return `0` to chain; record the use
+  back in the YR Hook Encyclopedia per the standing workflow.
+- **Guard the unit-delivery trigger:** `if (OnlyBuilt && !WasBuilt(pUnit)) skip;`.
+  Units created by `Delivery::resolve` never pass through `KickOutUnit`, so they
+  are never stamped → never re-deliver. A missed stamp fails *closed* (a unit
+  silently doesn't deliver) instead of *open* (runaway chain).
+- Keep `MaxDeliveryDepth` as the last-resort backstop, as the building path does.
+
+**Trade-off to document for modders.** Mark-built means only *factory-produced*
+units deliver. Pre-placed, campaign-scripted and trigger-given units are not
+stamped and so will not deliver unless separately marked (e.g. a one-time stamp
+at scenario start). For skirmish "build from a factory," `KickOutUnit` alone is
+sufficient and is usually the desired scope.
+
+**Why this direction (design note).** Mark-built is opt-in: only technos this DLL
+recognises as built participate, so units created by *other* DLLs, by the map, or
+by crates are never swept into our delivery logic — the guard is compatible with
+whatever else is loaded. Mark-delivered is opt-out and fails open, which on a big
+delivery list means a flood. Same conclusion reached independently in the
+GiftBox/Host DLL (`Host.OnlyBuilt=`), whose current mark-*spawned* guard works but
+is fail-open; see that project's notes and the encyclopedia
+`Map-Cell-Indexing.md` neighbours for the shared reasoning.
+
+*Status: recommendation only — not yet implemented. The unit-delivery trigger it
+guards is in-development and not in this committed tree.*

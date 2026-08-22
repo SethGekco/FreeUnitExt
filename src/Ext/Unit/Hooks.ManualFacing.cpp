@@ -179,6 +179,24 @@ DEFINE_HOOK(0x740801, FreeUnitExt_UnitClass_WhatAction_ManualFacing, 0x5)
 
     REF_STACK(Action, decided, 0x30);
 
+    // What_Action runs continuously for cursor updates, so logging every call
+    // would drown the log. Report only when the decided action CHANGES, which
+    // is enough to answer "what did vanilla actually say?" if this still fails.
+    {
+        static Action lastSeen = Action(-1);
+        static UnitClass* lastUnit = nullptr;
+
+        if (decided != lastSeen || pThis != lastUnit)
+        {
+            lastSeen = decided;
+            lastUnit = pThis;
+            Debug::Log("[FreeUnitExt] ManualFacing [%s]: What_Action decided %d%s\n",
+                pType->ID, int(decided),
+                (decided == Action::NoMove || decided == Action::None)
+                    ? " -> rewriting to Move(1)" : " -> left alone");
+        }
+    }
+
     // Only rewrite the "you cannot go there" answers. Attack, Enter, Capture,
     // Select and friends must keep working normally — ManualFacing is about
     // reclaiming the otherwise-dead move click, not about hijacking every order.

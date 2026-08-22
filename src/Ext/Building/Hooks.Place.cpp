@@ -157,18 +157,32 @@ DEFINE_HOOK(0x446AB5, BuildingClass_GrandOpening_FreeUnitGate, 0x8)
 }
 
 // =============================================================================
-// Deliver — 0x446B16, size 0x7
+// Deliver — 0x446AE3, size 0x6
 //
-//   446b16  8b 45 00     mov eax, [ebp]        ; pThis->vtable
-//   446b19  8d 4c 24 1c  lea ecx, [esp+0x1c]
+//   446ae3  8b 8d 1c 02 00 00  mov ecx, [ebp+0x21c]   ; pThis->Owner
 //
-// Everything above this point is vanilla's guard chain, and we deliberately sit
-// below it so we inherit all of it for free:
+// We inherit the guards ABOVE this point, which are the ones we want:
 //   - Antares' once-only FreeUnits_Done guard (0x446AAF)
-//   - ScenarioInit suppression        (0x446ABD)
+//   - ScenarioInit suppression        (0x446ABD) — nothing spawns during map load
 //   - the `captured` argument         (0x446ACA) — captured buildings give nothing
 //   - the 0xA8ED6B global             (0x446AD6)
-//   - the human-player / upgrade-level check (0x446AE3 .. 0x446B10)
+//
+// ⚠ And we deliberately BYPASS the guard immediately below, which is why this
+// hook moved here from 0x446B16:
+//
+//   if (Owner->IsControlledByHuman()          // 0x50B730, confirmed in YRpp
+//       && pThis->[0x300] != 0
+//       && pThis->[0x300] <= pType->vtable[0xAC]())
+//       goto 0x446EE2;                        // no free units
+//
+// That suppresses free units FOR HUMAN PLAYERS. Sitting below it meant every
+// delivery in a real game belonged to the AI — the player's own barracks
+// silently produced nothing, while the AI's worked, which is exactly what the
+// in-game logs showed (owner=Germans/Russians, never French).
+//
+// Vanilla can afford that rule because vanilla's FreeUnit= is one incidental
+// vehicle. A modder writing FreeUnit=E1,E1,E1,E1 means it, so we do not inherit
+// it. Recorded in HOOKS_LOG.md.
 //
 // EBP = BuildingClass* pThis.
 //
@@ -178,7 +192,7 @@ DEFINE_HOOK(0x446AB5, BuildingClass_GrandOpening_FreeUnitGate, 0x8)
 // sets Harvest/Area_Guard itself — but it does mean those three become dead
 // code whenever a building uses our keys. Recorded in HOOKS_LOG.md.
 // =============================================================================
-DEFINE_HOOK(0x446B16, BuildingClass_GrandOpening_Deliver, 0x7)
+DEFINE_HOOK(0x446AE3, BuildingClass_GrandOpening_Deliver, 0x6)
 {
     GET(BuildingClass*, pThis, EBP);
 
@@ -234,6 +248,10 @@ DEFINE_HOOK(0x446B16, BuildingClass_GrandOpening_Deliver, 0x7)
         map,
         int(pThis->PrimaryFacing.Current().GetDir()),
         parentRadius);
+
+    Debug::Log("[FreeUnitExt]   (bypassed vanilla guard: human=%d field300=%d)\n",
+        int(pThis->Owner && pThis->Owner->IsControlledByHuman()),
+        *reinterpret_cast<int*>(reinterpret_cast<char*>(pThis) + 0x300));
 
     Debug::Log("[FreeUnitExt] deliver [%s]: %d delivered, %d failed (of %u), "
         "foundation %d -> parentRadius %d\n",

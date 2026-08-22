@@ -80,7 +80,44 @@ Returns `0x446ABD` (continue the guard chain) or `0x446EE2` (skip to aircraft).
 `EAX` is dead after this test — the spawn code at `0x446B78` re-reads
 `[ecx+0xEA0]` fresh — so overriding the branch is safe without touching `EAX`.
 
-### `0x446B16` — `BuildingClass_GrandOpening_Deliver`, size `0x7`
+### `0x446AE3` — `BuildingClass_GrandOpening_Deliver`, size `0x6`
+
+```
+446ae3  8b 8d 1c 02 00 00     mov ecx, [ebp+0x21c]   ; pThis->Owner
+```
+
+`EBP` = `BuildingClass*`.
+
+**This hook was originally at `0x446B16` and that was wrong.** The guard between
+`0x446AE3` and `0x446B10` is:
+
+```
+if (Owner->IsControlledByHuman()        // 0x50B730 — named in YRpp HouseClass.h:492
+    && pThis->[0x300] != 0
+    && pThis->[0x300] <= pType->vtable[0xAC]())
+    goto 0x446EE2;                      // skip free units entirely
+```
+
+`0x50B730` is `HouseClass::IsControlledByHuman()` = `IsHumanPlayer ||
+IsInPlayerControl`, confirmed against YRpp which carries the address in a
+comment. So **this guard suppresses free units for human players** under a
+condition involving `BuildingClass+0x300` and a BuildingTypeClass virtual at
+vtable slot `0xAC` (both still unidentified).
+
+Empirically, in a skirmish this made every free-unit delivery belong to an AI
+house — `owner=Germans`/`owner=Russians`, never the player — while the player's
+own buildings silently produced nothing. A player's Refinery still delivered,
+so the guard is conditional rather than a blanket human block.
+
+We now sit ABOVE it and bypass it. Vanilla can afford the rule because its
+`FreeUnit=` is one incidental vehicle; a modder writing `FreeUnit=E1,E1,E1,E1`
+means it.
+
+**Still inherited** (all above `0x446AE3`): Antares' once-only guard, the
+`ScenarioInit` map-load suppression, the `captured` argument, and the `0xA8ED6B`
+global.
+
+### `0x446B16` — former deliver site, size `0x7` (NO LONGER USED)
 
 ```
 446b16  8b 45 00        mov eax, [ebp]

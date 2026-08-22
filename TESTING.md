@@ -83,8 +83,13 @@ Barracks on the map.
 
 ## 3. ManualFacing
 
-Give a vanilla unit `Speed=0` + `ManualFacing=yes` + `ManualFacing.ROT=3`, then
-right-click around it.
+Use `[AMCV]`, the starting MCV — **not** a factory-built unit. A `Speed=0`
+vehicle produced by a war factory never drives off its exit cell and can block
+the factory permanently. AMCV exists at game launch, so there is no exit to
+negotiate.
+
+Set `Speed=0` + `ManualFacing=yes` + `ManualFacing.ROT=3`, load a skirmish, and
+right-click around the MCV before deploying it.
 
 - Expected: the body swings to face the clicked cell and stops.
 - Failure mode to watch for: the unit enters a permanent "moving" state and stops

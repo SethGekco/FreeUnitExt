@@ -43,14 +43,16 @@ namespace DeliveredBuildings
             Marks.insert(pBuilding);
     }
 
-    bool ClaimWasDelivered(const void* pBuilding)
+    bool WasDelivered(const void* pBuilding)
     {
-        // Erase on claim so the mark cannot outlive the delivery it describes.
-        // A delivered building destroyed before it ever opens leaves a stale
-        // entry; the worst case is one future building reusing that address
-        // skipping its delivery once. Bounded, and far cheaper than a full
-        // BuildingClass instance extension.
-        return Marks.erase(pBuilding) > 0;
+        // Non-consuming: the flag must survive every Grand_Opening/Place this
+        // building ever gets, not just the first. Cleared by Unmark on death.
+        return Marks.count(pBuilding) > 0;
+    }
+
+    void Unmark(const void* pBuilding)
+    {
+        Marks.erase(pBuilding);
     }
 }
 
@@ -567,20 +569,16 @@ bool GameMap::placeLimbo(Delivery::Entry const& entry)
     // GAPILE would spawn its four free GIs onto the map from a structure that
     // is supposed to be invisible. Unlike the on-map path, where Grand_Opening
     // is deferred, this one is re-entrant within our own call.
+    //
+    // The mark is now persistent (WasDelivered does not consume it), so a single
+    // Mark covers every Grand_Opening this building will ever get — the two
+    // DiscoveredBy calls below and any later re-discovery. No re-mark needed.
     DeliveredBuildings::Mark(pBuilding);
 
     if (SessionClass::IsCampaign())
         pBuilding->DiscoveredBy(HouseClass::CurrentPlayer);
 
     pBuilding->DiscoveredBy(pOwner);
-
-    // Re-mark: the claim is one-shot, and in campaign DiscoveredBy runs TWICE
-    // (CurrentPlayer, then the owner), so the first Grand_Opening consumes the
-    // mark and the second would be unguarded. A limbo building must never
-    // deliver, ever, so keep it marked for good rather than for one call.
-    // (Antares' once-only guard would usually cover this, but relying on
-    // another DLL for correctness is not a guarantee — we run without it.)
-    DeliveredBuildings::Mark(pBuilding);
 
     pOwner->RegisterGain(pBuilding, false);
     pOwner->RecheckTechTree = true;

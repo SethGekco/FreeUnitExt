@@ -31,13 +31,19 @@ namespace DeliveredBuildings
 {
     void Mark(const void* pBuilding);
 
-    // Consumes the mark: a building only gets one Grand_Opening as a delivery.
-    // Callers that must stay exempt permanently (limbo buildings) re-Mark.
-    //
-    // Staleness tradeoff: a marked building destroyed before it opens leaves an
-    // entry behind, so a later building reusing that address would skip its
-    // delivery once. Bounded, and far cheaper than a BuildingClass instance ext.
-    bool ClaimWasDelivered(const void* pBuilding);
+    // NON-consuming, deliberately. A delivered building stays flagged for its
+    // whole life, so OnlyBuilt skips it no matter how many times Grand_Opening /
+    // Place fires — and it fires an unpredictable number of times (skirmish vs
+    // campaign discovery differ, houses re-discover, limbo re-entry, etc.). The
+    // old consume-on-claim design leaked exactly here: once the mark was used up
+    // a delivered structure was mistaken for a built one and ran its FreeUnit
+    // list, reproducing its free units. The flag is cleared on destruction
+    // (Unmark, from the techno dtor hook) so a reused address never inherits it.
+    bool WasDelivered(const void* pBuilding);
+
+    // Drop the flag when the building dies. Called from the TechnoClass dtor
+    // hook; erasing an absent key is a harmless no-op.
+    void Unmark(const void* pBuilding);
 }
 
 // One parsed delivery list. Entries[i].TypeIndex indexes into Types, which keeps

@@ -196,10 +196,12 @@ DEFINE_HOOK(0x446AE3, BuildingClass_GrandOpening_Deliver, 0x6)
     if (!pData || !pData->HasDelivery())
         return 0;   // vanilla FreeUnit= only — leave the engine (and Phobos) alone
 
-    // Identity, not depth: Grand_Opening is deferred, so a delivered building
-    // opens long after the delivery that created it has returned. The mark is
-    // consumed here whether or not OnlyBuilt is set, so it can never go stale.
-    const bool wasDelivered = DeliveredBuildings::ClaimWasDelivered(pThis);
+    // Identity, not depth: Grand_Opening is deferred (on-map) or re-entrant
+    // (limbo), never tied to delivery depth. The mark is PERSISTENT — checking it
+    // does not consume it — so this building stays exempt for every Grand_Opening
+    // it ever gets, however many times Place fires. It is cleared only when the
+    // building dies (the TechnoClass dtor hook below).
+    const bool wasDelivered = DeliveredBuildings::WasDelivered(pThis);
 
     if (wasDelivered && pData->OnlyBuilt)
     {
@@ -314,4 +316,25 @@ DEFINE_HOOK(0x446EE8, BuildingClass_GrandOpening_PadAircraft, 0x6)
     }
 
     return GrandOpeningEpilogue;
+}
+
+// =============================================================================
+// TechnoClass::~TechnoClass — 0x6F4500, size 0x5
+//
+// Clear a building's delivered-mark when it dies. The DeliveredBuildings flag is
+// persistent (WasDelivered no longer consumes it), so without this a destroyed
+// delivered building would leave a stale entry, and a NEW building the engine
+// later allocates at the same address would be mistaken for delivered and have
+// its own FreeUnit delivery wrongly skipped. Erasing on death closes that.
+//
+// TechnoClass dtor covers buildings (BuildingClass : TechnoClass). It fires for
+// every techno; Unmark on a pointer that was never a delivered building is a
+// no-op. Shared address (Ares/Antares/Phobos also hook it) — we return 0 to
+// chain. ECX = TechnoClass* this.
+// =============================================================================
+DEFINE_HOOK(0x6F4500, FreeUnitExt_TechnoClass_DTOR_Unmark, 0x5)
+{
+    GET(void*, pThis, ECX);
+    DeliveredBuildings::Unmark(pThis);
+    return 0;
 }

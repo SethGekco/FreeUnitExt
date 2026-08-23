@@ -55,6 +55,7 @@ vanilla types) and build the named buildings.
 | 7 | `GATECH` | no visible extra building, but Barracks units become buildable | `Limbo=yes` |
 | 8 | `AMRADR` | pad comes with its aircraft even though `[General]SeparateAircraft=yes` | per-building override |
 | 9 | `GAAIRC` | 4 aircraft, one per pad, not stacked on the centre | `SeparateAircraft.Types=` + `DockingOffsets` |
+| 10 | `NAWEAP` | the 2 free Rhinos swing their **turrets** to a right-click, hull unmoved | `ManualFacing.Turret=` |
 
 ### The sharpest checks
 

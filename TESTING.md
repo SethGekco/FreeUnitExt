@@ -44,18 +44,24 @@ per-entry failure isolation. They do **not** touch the engine.
 Drop `test/freeunittest.ini` contents into your `rulesmd.ini` (it only uses
 vanilla types) and build the named buildings.
 
+**Every host is Allied**, so the whole set runs in one skirmish as America.
+
 | # | Build | Expect | Catches |
 |---|---|---|---|
 | 1 | `GAPILE` | 4 GIs, one on each of N/E/S/W | multi-entry + `.Cell` |
-| 2 | `NAHAND` | 3 conscripts north, a clear cell between each | `.Spacing` |
-| 3 | `GAWEAP` | 1 GI + 1 tank, both facing east | mixed infantry/vehicle, `.Facing` broadcast |
-| 4 | `NAWEAP` | 2 rhinos facing different random directions each game | synced RNG, `random` |
-| 5 | `GAREFN` | a harvester that **starts harvesting**, not guarding | Antares' mission fix reproduced |
-| 6 | `NAPOWR` | a second power plant appears within 3 cells | `Kind::Building`, foundation fit |
+| 2 | `GADEPT` | 3 GIs north, a clear cell between each | `.Spacing` |
+| 3 | `GAWEAP` | 1 GI + 1 Grizzly, both facing east | mixed infantry/vehicle, `.Facing` broadcast |
+| 4 | `GAOREP` | 2 Grizzlies facing different random directions each game | synced RNG, `random` |
+| 5 | `GAREFN` | a harvester that **starts harvesting**, not guarding | ⚠ weak — see below |
+| 6 | `GAPOWR` | one more power plant within 3 cells, and **it does not chain** | `Kind::Building` + `OnlyBuilt` |
 | 7 | `GATECH` | no visible extra building, but Barracks units become buildable | `Limbo=yes` |
 | 8 | `AMRADR` | pad comes with its aircraft even though `[General]SeparateAircraft=yes` | per-building override |
-| 9 | `GAAIRC` | 4 aircraft, one per pad, not stacked on the centre | `SeparateAircraft.Types=` + `DockingOffsets` |
-| 10 | `NAWEAP` | the 2 free Rhinos swing their **turrets** to a right-click, hull unmoved | `ManualFacing.Turret=` |
+| 9 | `GAAIRC` | 4 aircraft, one per pad, facing N/E/S/W, not stacked | `SeparateAircraft.Types=` + per-pad `.Facing` |
+| 10 | `GAOREP` | those 2 Grizzlies swing their **turrets** to a right-click, hulls unmoved | `ManualFacing.Turret=` |
+| 11 | *(none)* | the starting MCV turns to face right-clicks, and still deploys | `ManualFacing=` on `[AMCV]` |
+
+#4 and #10 share one build: the two Grizzlies show random spawn facing, then
+serve as the turret subjects.
 
 ### The sharpest checks
 

@@ -54,11 +54,7 @@ DEFINE_HOOK(0x4C7462, FreeUnitExt_EventClass_Execute_ManualFacing, 0x5)
     auto const mission = static_cast<Mission>(pThis->MegaMission.Mission);
 
     if (mission != Mission::Move)
-    {
-        Debug::Log("[FreeUnitExt] ManualFacing [%s]: event mission is %d, not Move(2)"
-            " — ignoring\n", pType->ID, int(mission));
         return 0;
-    }
 
     auto const pDestination = pThis->MegaMission.Destination.As_Abstract();
     if (!pDestination)
@@ -105,9 +101,6 @@ DEFINE_HOOK(0x4C7462, FreeUnitExt_EventClass_Execute_ManualFacing, 0x5)
     auto const target = pTechno->GetTargetDirection(pDestination);
     facing.SetDesired(target);
 
-    Debug::Log("[FreeUnitExt] ManualFacing [%s]: aiming %s at raw %u (ROT %d)\n",
-        pType->ID, useTurret ? "turret" : "hull",
-        unsigned(target.Raw), pData->ROT);
 
     // Swallow the order: without this the engine assigns Mission::Move and an
     // immobile unit spends the rest of its life "moving" to a cell it can never
@@ -179,23 +172,6 @@ DEFINE_HOOK(0x740801, FreeUnitExt_UnitClass_WhatAction_ManualFacing, 0x5)
 
     REF_STACK(Action, decided, 0x30);
 
-    // What_Action runs continuously for cursor updates, so logging every call
-    // would drown the log. Report only when the decided action CHANGES, which
-    // is enough to answer "what did vanilla actually say?" if this still fails.
-    {
-        static Action lastSeen = Action(-1);
-        static UnitClass* lastUnit = nullptr;
-
-        if (decided != lastSeen || pThis != lastUnit)
-        {
-            lastSeen = decided;
-            lastUnit = pThis;
-            Debug::Log("[FreeUnitExt] ManualFacing [%s]: What_Action decided %d%s\n",
-                pType->ID, int(decided),
-                (decided == Action::NoMove || decided == Action::None)
-                    ? " -> rewriting to Move(1)" : " -> left alone");
-        }
-    }
 
     // Only rewrite the "you cannot go there" answers. Attack, Enter, Capture,
     // Select and friends must keep working normally — ManualFacing is about

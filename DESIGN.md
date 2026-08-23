@@ -127,9 +127,20 @@ A unit with `Speed=0` discards move orders. `ManualFacing=yes` reinterprets the
 order as "turn to look at that cell", giving an immobile emplacement a
 player-controllable body facing.
 
-Too small to be its own DLL, which is why it is here. It is hooked at the
-**network event** seam (`EventClass::Execute`, `0x4C7462`) rather than the input
-seam, so it is sync-safe by construction.
+Too small to be its own DLL, which is why it is here.
+
+It needs **two** hooks, which was not obvious:
+
+1. `UnitClass::What_Action` @ `0x740801` — an immobile unit's click never
+   resolves to `Action::Move`, so no event is ever queued. Rewriting the decided
+   action (observed as `Action::None`, not `NoMove`) is what makes the click
+   dispatch at all.
+2. `EventClass::Execute` @ `0x4C7462` — the **network event** seam, where the
+   now-issued move order is turned into a facing change. Chosen over the input
+   path so it is sync-safe by construction.
+
+`ManualFacing.Turret=` selects hull (`PrimaryFacing`) or turret
+(`SecondaryFacing`).
 
 ## 7. Status
 
@@ -137,8 +148,11 @@ Phase 1 **working in-game** (2026-08-21). Confirmed by Rex: four infantry per
 barracks for the human player, four aircraft on four numbered pads, and
 `FreeUnit.Buildings=` delivering exactly one neighbour instead of chaining.
 
-Still unconfirmed in-game: `ManualFacing=`, limbo delivery (#7), `.Spacing` (#2),
-per-pad `.Facing` (#9), and save/load of limbo entries.
+`ManualFacing` confirmed 2026-08-22: an immobile MCV turns to face right-clicked
+cells and still deploys normally.
+
+Still unconfirmed in-game: limbo delivery (#7), `.Spacing` (#2), per-pad
+`.Facing` (#9), `ManualFacing.Turret=`, and save/load of limbo entries.
 
 | Piece | State |
 |---|---|
@@ -146,7 +160,7 @@ per-pad `.Facing` (#9), and save/load of limbo entries.
 | BuildingType data + INI parsing | ✅ confirmed in-game |
 | `GameMap` engine adapter | ✅ confirmed in-game |
 | Grand_Opening hooks (3) | ✅ confirmed in-game |
-| TechnoType data + ManualFacing | ⚠ built, never exercised |
+| TechnoType data + ManualFacing | ✅ confirmed in-game |
 | CI (Windows MSBuild + host tests) | ✅ green, artifacts published |
 
 TESTING.md leads with the two silent-failure modes, and now also with the two

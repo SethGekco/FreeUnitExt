@@ -20,7 +20,7 @@
  * want to inherit rather than re-implement:
  *
  *   0x446AB5  gate    — let the block run when only OUR list is populated
- *   0x446B16  deliver — replace the spawn once every vanilla guard has passed
+ *   0x446AE3  deliver — replace the spawn, ABOVE the human-player guard
  *   0x446EE8  pads    — replace the aircraft spawn, after Antares' payload hook
  *
  * See HOOKS_LOG.md for the full derivation and the register layouts.
@@ -149,10 +149,6 @@ DEFINE_HOOK(0x446AB5, BuildingClass_GrandOpening_FreeUnitGate, 0x8)
     auto const pData = BuildingTypeExt::Find(pThis->Type);
     const bool ours = pData && pData->HasDelivery();
 
-
-    Debug::Log("[FreeUnitExt] gate [%s]: vanilla FreeUnit=null, ours=%s\n",
-        pThis->Type->ID, ours ? "yes" : "NO DATA");
-
     return ours ? ContinueFreeUnitGuards : PadAircraftBlock;
 }
 
@@ -198,11 +194,7 @@ DEFINE_HOOK(0x446AE3, BuildingClass_GrandOpening_Deliver, 0x6)
 
     auto const pData = BuildingTypeExt::Find(pThis->Type);
     if (!pData || !pData->HasDelivery())
-    {
-        Debug::Log("[FreeUnitExt] deliver [%s]: no data, falling through to vanilla\n",
-            pThis->Type->ID);
         return 0;   // vanilla FreeUnit= only — leave the engine (and Phobos) alone
-    }
 
     // Identity, not depth: Grand_Opening is deferred, so a delivered building
     // opens long after the delivery that created it has returned. The mark is
@@ -249,9 +241,6 @@ DEFINE_HOOK(0x446AE3, BuildingClass_GrandOpening_Deliver, 0x6)
         int(pThis->PrimaryFacing.Current().GetDir()),
         parentRadius);
 
-    Debug::Log("[FreeUnitExt]   (bypassed vanilla guard: human=%d field300=%d)\n",
-        int(pThis->Owner && pThis->Owner->IsControlledByHuman()),
-        *reinterpret_cast<int*>(reinterpret_cast<char*>(pThis) + 0x300));
 
     Debug::Log("[FreeUnitExt] deliver [%s]: %d delivered, %d failed (of %u), "
         "foundation %d -> parentRadius %d\n",
@@ -287,15 +276,7 @@ DEFINE_HOOK(0x446EE8, BuildingClass_GrandOpening_PadAircraft, 0x6)
 
     // Nothing of ours to say: let the vanilla block decide exactly as before.
     if (!pData || (!pData->SeparateAircraft_Set && pData->PadAircraft.empty()))
-    {
-        Debug::Log("[FreeUnitExt] pads [%s]: no data, falling through to vanilla\n",
-            pType->ID);
         return 0;
-    }
-
-    Debug::Log("[FreeUnitExt] pads [%s]: captured=%d delivers=%d types=%u docks=%d\n",
-        pType->ID, int(captured), int(BuildingTypeExt::DeliversPadAircraft(pType)),
-        unsigned(pData->PadAircraft.Entries.size()), pType->NumberOfDocks);
 
     if (captured || !BuildingTypeExt::DeliversPadAircraft(pType))
         return GrandOpeningEpilogue;

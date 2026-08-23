@@ -512,22 +512,6 @@ bool GameMap::place(Delivery::Entry const& entry, Delivery::Offset offset, int f
     if (entry.What == Delivery::Kind::Building)
         DeliveredBuildings::Mark(pObject);
 
-    auto const actual = CellClass::Coord2Cell(pObject->GetCoords());
-    Debug::Log("[FreeUnitExt]   placed %s want cell (%d,%d) offset (%+d,%+d) facing %d "
-        "| engine says cell (%d,%d) alive=%d onMap=%d inLimbo=%d\n",
-        pType->ID, int(target.X), int(target.Y), offset.X, offset.Y, facing,
-        int(actual.X), int(actual.Y),
-        int(pObject->IsAlive), int(pObject->IsOnMap), int(pObject->InLimbo));
-
-    Debug::Log("[FreeUnitExt]     owner=%s (idx %d) currentPlayer=%s (idx %d) "
-        "whatAmI=%d footCast=%s\n",
-        pOwner && pOwner->Type ? pOwner->Type->ID : "?",
-        pOwner ? pOwner->ArrayIndex : -1,
-        HouseClass::CurrentPlayer && HouseClass::CurrentPlayer->Type
-            ? HouseClass::CurrentPlayer->Type->ID : "?",
-        HouseClass::CurrentPlayer ? HouseClass::CurrentPlayer->ArrayIndex : -1,
-        int(pObject->WhatAmI()),
-        abstract_cast<FootClass*>(pObject) ? "ok" : "FAILED");
 
     // A free unit with nothing to do should guard its birthplace. Harvesters
     // are the one type with a better default — the same distinction Antares

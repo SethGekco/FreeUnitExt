@@ -390,5 +390,33 @@ GiftBox/Host DLL (`Host.OnlyBuilt=`), whose current mark-*spawned* guard works b
 is fail-open; see that project's notes and the encyclopedia
 `Map-Cell-Indexing.md` neighbours for the shared reasoning.
 
-*Status: recommendation only — not yet implemented. The unit-delivery trigger it
-guards is in-development and not in this committed tree.*
+### Building path: IMPLEMENTED (the mark must be persistent, not consumed)
+
+The building guard shipped a subtler version of the same failure and is now fixed.
+`DeliveredBuildings::ClaimWasDelivered` used to **consume** the mark (`erase` on
+claim), on the theory that a building gets exactly one Grand_Opening. It does not:
+`Place`/`Grand_Opening` fires an unpredictable number of times (skirmish vs
+campaign discovery counts, houses re-discovering it, the synchronous limbo
+re-entry). Each fire consumed one mark; once exhausted, the delivered building was
+treated as **built** and re-ran its `FreeUnit` list — free units reproducing in
+spite of `FreeUnit.OnlyBuilt=yes`. The old `placeLimbo` "re-mark once for the
+campaign's two DiscoveredBy calls" was a band-aid over this.
+
+Fix (committed):
+- `WasDelivered()` is **non-consuming** (`Marks.count`, not `erase`). A delivered
+  building stays exempt for its whole life, however many times `Place` fires.
+- `Unmark()` clears the flag on death, hooked at **`0x6F4500`
+  (`TechnoClass::~TechnoClass`, ECX, size 5; shared with Ares/Antares/Phobos —
+  return 0 to chain)**, so a building the engine later allocates at a freed
+  address never inherits a stale flag.
+- The `placeLimbo` re-mark is gone; one `Mark` before `DiscoveredBy` now suffices.
+
+**General principle (for any DLL author — this is the reusable lesson):** a
+"was-this-spawned/delivered/built" guard flag must be **stable for the object's
+whole lifetime and set before the trigger can fire** — never consumed per-event
+and never counted-against a guessed number of firings. Consume-on-claim and
+"re-mark N times" both leak the moment the engine fires the trigger once more than
+you predicted. Set at creation, clear at destruction, check without mutating.
+
+*Status: building path implemented and CI-green. The unit path (mark-built) remains
+a recommendation for when the unit-delivery trigger lands — same principle.*

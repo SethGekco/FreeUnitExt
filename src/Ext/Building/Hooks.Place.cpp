@@ -36,6 +36,8 @@
 #include <UnitTypeClass.h>
 #include <Unsorted.h>
 #include <algorithm>
+#include <cstdio>
+#include <string>
 
 #include <Helpers/Cast.h>
 #include <Utilities/Debug.h>
@@ -257,6 +259,19 @@ DEFINE_HOOK(0x446AE3, BuildingClass_GrandOpening_Deliver, 0x6)
         pThis->Owner && pThis->Owner->Type ? pThis->Owner->Type->ID : "?",
         result.Delivered, result.Failed,
         unsigned(list.Entries.size()), foundation, parentRadius);
+
+    // The offsets settle .Cell and .Spacing without anyone squinting at tiles.
+    if (!result.Placed.empty())
+    {
+        std::string cells;
+        char buf[32];
+        for (auto const& off : result.Placed)
+        {
+            std::snprintf(buf, sizeof(buf), " (%+d,%+d)", off.X, off.Y);
+            cells += buf;
+        }
+        Debug::Log("[FreeUnitExt]   cells:%s\n", cells.c_str());
+    }
 
     return PadAircraftBlock;
 }

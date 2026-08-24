@@ -91,9 +91,38 @@ FreeUnit.Facing=random              ; broadcast: all four face randomly
 FreeUnit.Spacing=1                  ; (no effect here — one unit per side)
 ```
 
-Direction names are the compass as seen on screen; `0` is north and values
-increase clockwise, so `64` is due east. A bare number lets you aim between the
-eight compass points if the type's `ROT` can hold the angle.
+### Directions are SCREEN-relative — with one exception
+
+`FreeUnit.Cell=` names mean what you see: `N` puts the unit **straight up** from
+the building on screen, `E` straight right, and so on.
+
+That needs saying because the map is isometric. Screen position is roughly
+`(cellX - cellY, cellX + cellY)`, so the *cell* Y axis renders diagonally. A
+naive `N` = cell `(0,-1)` appears **north-east**. These names are rotated 45° to
+compensate:
+
+| Name | Cell offset | On screen |
+|---|---|---|
+| `N` | (-1,-1) | up |
+| `NE` | (0,-1) | up-right |
+| `E` | (1,-1) | right |
+| `SE` | (1,0) | down-right |
+| `S` | (1,1) | down |
+| `SW` | (0,1) | down-left |
+| `W` | (-1,1) | left |
+| `NW` | (-1,0) | up-left |
+
+Consequence worth knowing: the screen-cardinals (`N`/`E`/`S`/`W`) step
+*diagonally* through cells, so they cover about twice the visual distance per
+step as the diagonals do. `Spacing` counts **cells**, not pixels, so
+`Cell=N Spacing=1` looks more spread out than `Cell=NE Spacing=1`.
+
+> ⚠ **`FreeUnit.Facing=` is NOT screen-relative.** It is the engine's raw
+> `DirType`, where `0` is the engine's north and values increase clockwise
+> (`64` = east). A bare number lets you aim between the eight points if the
+> type's `ROT` can hold the angle. The two keys use the same letters for
+> different frames of reference — `.Cell` is where you see it, `.Facing` is what
+> the engine turns it to.
 
 `random` is resolved through the game's **scenario RNG**, so every client in a
 multiplayer game picks the same cell and the same facing. Do not expect it to

@@ -49,18 +49,18 @@ vanilla types) and build the named buildings.
 | # | Build | Expect | Catches |
 |---|---|---|---|
 | 1 | `GAPILE` | 4 GIs, one on each of N/E/S/W | multi-entry + `.Cell` |
-| 2 | `GADEPT` | 3 Guardian GIs **due north, one empty cell between each** | `.Spacing` |
+| 2 | `GADEPT` | 3 Guardian GIs **straight up the screen, one empty tile between each** | `.Spacing` |
 | 3 | `GAWEAP` | 1 GI + 1 Grizzly, both facing east | mixed infantry/vehicle, `.Facing` broadcast |
-| 4 | `GAOREP` | 2 Grizzlies facing different random directions each game | synced RNG, `random` |
+| 4 | `GAPOWR` | 2 Grizzlies facing different random directions each game | synced RNG, `random` |
 | 5 | `GAREFN` | a harvester that **starts harvesting**, not guarding | ⚠ weak — see below |
 | 6 | `GAPOWR` | one more power plant within 3 cells, and **it does not chain** | `Kind::Building` + `OnlyBuilt` |
 | 7 | `GATECH` | no visible extra building, but Barracks units become buildable | `Limbo=yes` |
 | 8 | `AMRADR` | pad comes with its aircraft even though `[General]SeparateAircraft=yes` | per-building override |
 | 9 | `GAAIRC` | 4 aircraft, one per pad, facing N/E/S/W, not stacked | `SeparateAircraft.Types=` + per-pad `.Facing` |
-| 10 | `GAOREP` | those 2 Grizzlies swing their **turrets** to a right-click, hulls unmoved | `ManualFacing.Turret=` |
+| 10 | `GAPOWR` | those 2 Grizzlies swing their **turrets** to a right-click, hulls unmoved | `ManualFacing.Turret=` |
 | 11 | *(none)* | the starting MCV turns to face right-clicks, and still deploys | `ManualFacing=` on `[AMCV]` |
 
-#4 and #10 share one build: the two Grizzlies show random spawn facing, then
+#4 and #10 share one build (moved off GAOREP, which prerequisites made unbuildable): the two Grizzlies show random spawn facing, then
 serve as the turret subjects.
 
 ### The sharpest checks
@@ -74,15 +74,11 @@ serve as the turret subjects.
 **#1 is the real canary.** `E1` is infantry, which vanilla's `FreeUnit=` cannot
 express at all, so four GIs appearing can only be us.
 
-**Pick a test subject no other DLL is spawning.** The `.Spacing` test originally
-used `E1`, but this install's `[E1]` carries `Host.Types=E1` from the GiftBox/Host
-DLL, so GIs self-replicate — three more were invisible in the crowd and the test
-was unobservable. It uses `GGI` now, which has no `Host.` tags. Before choosing a
-subject, check it:
-
-```bash
-awk '/^\[/{sec=$0} /^(Host|GiftBox)\./{print sec"  "$0}' rulesmd.ini | sort -u
-```
+**Pick a test subject no other DLL is spawning, and one you can actually build.**
+Two tests were silently unrunnable: `.Spacing` used `E1`, which a GiftBox/Host
+setup makes self-replicate (three more vanish into the crowd), and #4/#10 used
+`GAOREP` and `AMRADR`, which prerequisites and `TechLevel=11` put out of reach.
+A test you cannot observe or cannot reach reports nothing, indefinitely.
 
 **Always check the owner.** Free units are suppressed for human players by the
 vanilla guard at `0x446AE3` (see HOOKS_LOG.md), so a feature can look like it

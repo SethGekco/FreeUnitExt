@@ -115,11 +115,11 @@ static void test_directionRayIsFirst()
     std::printf("candidateOffsets — the named side is searched first\n");
 
     auto north = Delivery::candidateOffsets(Delivery::Dir_N, 1, 3);
-    check(north.front() == Delivery::Offset { 0, -1 }, "N starts one cell north");
-    check(north[1] == Delivery::Offset { 0, -2 }, "N marches straight out before widening");
+    check(north.front() == Delivery::Offset { -1, -1 }, "N is screen-up = cell (-1,-1)");
+    check(north[1] == Delivery::Offset { -2, -2 }, "N marches straight out before widening");
 
     auto east = Delivery::candidateOffsets(Delivery::Dir_E, 1, 2);
-    check(east.front() == Delivery::Offset { 1, 0 }, "E starts one cell east");
+    check(east.front() == Delivery::Offset { 1, -1 }, "E is screen-right = cell (1,-1)");
 
     // The ray must be followed by a ring fallback, never leaving the list short.
     check(north.size() > 3, "ray is followed by ring fallback candidates");
@@ -144,6 +144,52 @@ static void test_directionRayIsFirst()
     check(!hasCentre, "the parent's own cell is never offered");
 }
 
+static void test_screenRelativeDirections()
+{
+    std::printf("directionStep — compass names are SCREEN-relative\n");
+
+    // This is the property the names actually promise, and the one nobody was
+    // checking: the map is isometric, so screen ~ (cellX - cellY, cellX + cellY).
+    // A cardinal is correct only when it moves along exactly ONE screen axis.
+    // The original mapping used cell axes, so Cell=N rendered as north-EAST.
+    struct Case { int dir; const char* name; int sx; int sy; };
+    const Case cases[] = {
+        { Delivery::Dir_N, "N",  0, -1 },   // straight up
+        { Delivery::Dir_E, "E", +1,  0 },   // straight right
+        { Delivery::Dir_S, "S",  0, +1 },   // straight down
+        { Delivery::Dir_W, "W", -1,  0 },   // straight left
+    };
+
+    auto sign = [](int v) { return v > 0 ? 1 : (v < 0 ? -1 : 0); };
+
+    for (auto const& c : cases)
+    {
+        auto const step = Delivery::directionStep(c.dir);
+        const int screenX = step.X - step.Y;
+        const int screenY = step.X + step.Y;
+
+        check(sign(screenX) == sign(c.sx) && sign(screenY) == sign(c.sy),
+            std::string(c.name) + " moves along one screen axis only");
+    }
+
+    // The diagonals must be genuinely diagonal on screen, i.e. both axes move.
+    for (int dir : { Delivery::Dir_NE, Delivery::Dir_SE, Delivery::Dir_SW, Delivery::Dir_NW })
+    {
+        auto const step = Delivery::directionStep(dir);
+        check((step.X - step.Y) != 0 && (step.X + step.Y) != 0,
+            "diagonal moves on both screen axes");
+    }
+
+    // All eight must be distinct, or two names would collide onto one cell.
+    std::set<std::pair<int, int>> seen;
+    for (int i = 0; i < 8; ++i)
+    {
+        auto const step = Delivery::directionStep(i * 32);
+        seen.insert({ step.X, step.Y });
+    }
+    check(seen.size() == 8, "all eight compass points map to distinct cells");
+}
+
 static void test_multipleUnitsAndSpacing()
 {
     std::printf("resolve — multiple units, spacing on a shared side\n");
@@ -161,9 +207,9 @@ static void test_multipleUnitsAndSpacing()
     auto result = Delivery::resolve(entries, map, Delivery::Dir_S);
     check(result.Delivered == 3, "all three units delivered");
     check(map.Log.size() == 3, "three placements logged");
-    check(map.Log[0].Where == Delivery::Offset { 0, -1 }, "first unit one cell north");
-    check(map.Log[1].Where == Delivery::Offset { 0, -2 }, "second stacks beyond the first");
-    check(map.Log[2].Where == Delivery::Offset { 0, -3 }, "third beyond the second");
+    check(map.Log[0].Where == Delivery::Offset { -1, -1 }, "first unit one step north");
+    check(map.Log[1].Where == Delivery::Offset { -2, -2 }, "second stacks beyond the first");
+    check(map.Log[2].Where == Delivery::Offset { -3, -3 }, "third beyond the second");
 
     // Spacing=1 must leave a gap between consecutive units.
     FakeMap spaced;
@@ -176,8 +222,8 @@ static void test_multipleUnitsAndSpacing()
         spacedEntries.push_back(entry);
     }
     Delivery::resolve(spacedEntries, spaced, Delivery::Dir_N);
-    check(spaced.Log[0].Where == Delivery::Offset { 0, -2 }, "Spacing=1 pushes the first out one extra cell");
-    check(spaced.Log[1].Where == Delivery::Offset { 0, -4 }, "Spacing=1 leaves a gap between units");
+    check(spaced.Log[0].Where == Delivery::Offset { -2, -2 }, "Spacing=1 pushes the first out one extra step");
+    check(spaced.Log[1].Where == Delivery::Offset { -4, -4 }, "Spacing=1 leaves a gap between units");
 }
 
 static void test_blockedRayFallsBackToRing()
@@ -185,16 +231,17 @@ static void test_blockedRayFallsBackToRing()
     std::printf("resolve — a blocked side still yields a unit\n");
 
     FakeMap map;
-    // Wall off the entire northern ray out to a good distance.
-    for (int y = 1; y <= 12; ++y)
-        map.Blocked.insert({ 0, -y });
+    // Wall off the entire northern ray. N is screen-up = cell (-1,-1) per step,
+    // so the ray runs along the negative diagonal, not the Y axis.
+    for (int r = 1; r <= 12; ++r)
+        map.Blocked.insert({ -r, -r });
 
     auto entry = foot(300);
     entry.Cell = Delivery::Dir_N;
 
     auto result = Delivery::resolve({ entry }, map, Delivery::Dir_N);
     check(result.Delivered == 1, "unit still delivered when its side is blocked");
-    check(map.Log.size() == 1 && !(map.Log[0].Where == Delivery::Offset { 0, -1 }),
+    check(map.Log.size() == 1 && !(map.Log[0].Where == Delivery::Offset { -1, -1 }),
         "it landed somewhere other than the blocked ray");
 }
 
@@ -234,7 +281,7 @@ static void test_randomCellUsesRng()
 
     Delivery::resolve({ entry }, map, Delivery::Dir_N);
     check(map.RandomAt == 1, "random side drew once from the synced RNG");
-    check(map.Log[0].Where == Delivery::Offset { -1, 0 }, "random index 6 placed the unit west");
+    check(map.Log[0].Where == Delivery::Offset { -1, 1 }, "random index 6 placed the unit screen-west");
 }
 
 static void test_limboBypassesPlacement()
@@ -335,7 +382,7 @@ static void test_placeFailureTriesNextCell()
 
     auto result = Delivery::resolve({ entry }, map, Delivery::Dir_N);
     check(result.Delivered == 1, "entry survived a refused cell");
-    check(map.Log.size() == 1 && map.Log[0].Where == Delivery::Offset { 0, -2 },
+    check(map.Log.size() == 1 && map.Log[0].Where == Delivery::Offset { -2, -2 },
         "it moved on to the next candidate instead of giving up");
 }
 
@@ -351,7 +398,7 @@ static void test_parentRadiusClearsFootprint()
     entry.Cell = Delivery::Dir_N;
 
     Delivery::resolve({ entry }, map, Delivery::Dir_N, /*parentRadius=*/2);
-    check(map.Log[0].Where == Delivery::Offset { 0, -3 },
+    check(map.Log[0].Where == Delivery::Offset { -3, -3 },
         "first unit starts beyond parentRadius, not at radius 1");
 
     // Spacing still composes on top of the footprint clearance.
@@ -360,8 +407,8 @@ static void test_parentRadiusClearsFootprint()
     auto b = foot(1002); b.Cell = Delivery::Dir_N; b.Spacing = 1;
 
     Delivery::resolve({ a, b }, spaced, Delivery::Dir_N, /*parentRadius=*/2);
-    check(spaced.Log[0].Where == Delivery::Offset { 0, -4 }, "footprint + spacing for the first");
-    check(spaced.Log[1].Where == Delivery::Offset { 0, -6 }, "and the gap is preserved for the second");
+    check(spaced.Log[0].Where == Delivery::Offset { -4, -4 }, "footprint + spacing for the first");
+    check(spaced.Log[1].Where == Delivery::Offset { -6, -6 }, "and the gap is preserved for the second");
 
     // A directionless entry must clear the footprint too, not just a named ray.
     FakeMap any;
@@ -376,7 +423,7 @@ static void test_parentRadiusClearsFootprint()
     auto plain = foot(1004);
     plain.Cell = Delivery::Dir_N;
     Delivery::resolve({ plain }, legacy, Delivery::Dir_N);
-    check(legacy.Log[0].Where == Delivery::Offset { 0, -1 },
+    check(legacy.Log[0].Where == Delivery::Offset { -1, -1 },
         "omitting parentRadius keeps the original radius-1 behaviour");
 }
 
@@ -384,6 +431,7 @@ int main()
 {
     test_parseDirection();
     test_directionRayIsFirst();
+    test_screenRelativeDirections();
     test_multipleUnitsAndSpacing();
     test_blockedRayFallsBackToRing();
     test_facingInheritanceAndRandom();

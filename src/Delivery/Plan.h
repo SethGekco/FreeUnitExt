@@ -150,20 +150,41 @@ namespace Delivery
         }
     };
 
-    // Unit vector for each of the 8 compass directions, in the game's cell
-    // space where +X runs east-ish and +Y runs south-ish.
+    /*
+     * Unit cell offset for each of the 8 compass directions, SCREEN-RELATIVE.
+     *
+     * The map is isometric: screen position is roughly
+     * (cellX - cellY, cellX + cellY). So the naive mapping — N as cell
+     * (0,-1) — renders as up-AND-right, i.e. north-EAST on screen. Confirmed
+     * in-game: `FreeUnit.Cell=N` produced a trail heading visually NE.
+     *
+     * A modder writing `N` means "above the building", not "one cell along the
+     * data's Y axis", so these are rotated 45 degrees to match what the player
+     * actually sees:
+     *
+     *   N  -> cell (-1,-1)   straight up on screen
+     *   E  -> cell ( 1,-1)   straight right
+     *   S  -> cell ( 1, 1)   straight down
+     *   W  -> cell (-1, 1)   straight left
+     *
+     * The diagonals land on the cell axes, which is the same 45-degree turn.
+     * Note the four screen-diagonal steps move ONE cell while the screen-cardinal
+     * ones move a cell diagonally — that is inherent to the projection, and it
+     * makes the cardinals visually twice as far per step. `Spacing` counts cells,
+     * not pixels, so a cardinal ray looks more spread out than a diagonal one.
+     */
     inline Offset directionStep(int dir)
     {
         switch (((dir % 256) + 256) % 256 / 32)
         {
-        case 0: return {  0, -1 }; // N
-        case 1: return {  1, -1 }; // NE
-        case 2: return {  1,  0 }; // E
-        case 3: return {  1,  1 }; // SE
-        case 4: return {  0,  1 }; // S
-        case 5: return { -1,  1 }; // SW
-        case 6: return { -1,  0 }; // W
-        default: return { -1, -1 }; // NW
+        case 0: return { -1, -1 }; // N  — screen up
+        case 1: return {  0, -1 }; // NE — screen up-right
+        case 2: return {  1, -1 }; // E  — screen right
+        case 3: return {  1,  0 }; // SE — screen down-right
+        case 4: return {  1,  1 }; // S  — screen down
+        case 5: return {  0,  1 }; // SW — screen down-left
+        case 6: return { -1,  1 }; // W  — screen left
+        default: return { -1,  0 }; // NW — screen up-left
         }
     }
 
@@ -260,6 +281,14 @@ namespace Delivery
     {
         int Delivered = 0;
         int Failed = 0;
+
+        // Where each delivered entry actually landed, relative to the parent.
+        //
+        // Exists so the caller can print the real offsets in ONE line. Whether
+        // Spacing worked is a question about cell arithmetic, and asking a human
+        // to count empty tiles on an isometric screen is unreliable — "is there
+        // a gap" was misread as "is there a Gap Generator" once already.
+        std::vector<Offset> Placed;
     };
 
     /*
@@ -338,6 +367,7 @@ namespace Delivery
                     continue;
 
                 placed = true;
+                result.Placed.push_back(offset);
 
                 // Advance the running distance by the Chebyshev radius we
                 // actually used, so the next entry on this side starts beyond it.

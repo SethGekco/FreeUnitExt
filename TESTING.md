@@ -49,7 +49,7 @@ vanilla types) and build the named buildings.
 | # | Build | Expect | Catches |
 |---|---|---|---|
 | 1 | `GAPILE` | 4 GIs, one on each of N/E/S/W | multi-entry + `.Cell` |
-| 2 | `GADEPT` | 3 GIs north, a clear cell between each | `.Spacing` |
+| 2 | `GADEPT` | 3 Guardian GIs **due north, one empty cell between each** | `.Spacing` |
 | 3 | `GAWEAP` | 1 GI + 1 Grizzly, both facing east | mixed infantry/vehicle, `.Facing` broadcast |
 | 4 | `GAOREP` | 2 Grizzlies facing different random directions each game | synced RNG, `random` |
 | 5 | `GAREFN` | a harvester that **starts harvesting**, not guarding | ⚠ weak — see below |
@@ -73,6 +73,16 @@ serve as the turret subjects.
 
 **#1 is the real canary.** `E1` is infantry, which vanilla's `FreeUnit=` cannot
 express at all, so four GIs appearing can only be us.
+
+**Pick a test subject no other DLL is spawning.** The `.Spacing` test originally
+used `E1`, but this install's `[E1]` carries `Host.Types=E1` from the GiftBox/Host
+DLL, so GIs self-replicate — three more were invisible in the crowd and the test
+was unobservable. It uses `GGI` now, which has no `Host.` tags. Before choosing a
+subject, check it:
+
+```bash
+awk '/^\[/{sec=$0} /^(Host|GiftBox)\./{print sec"  "$0}' rulesmd.ini | sort -u
+```
 
 **Always check the owner.** Free units are suppressed for human players by the
 vanilla guard at `0x446AE3` (see HOOKS_LOG.md), so a feature can look like it

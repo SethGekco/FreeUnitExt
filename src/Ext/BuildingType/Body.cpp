@@ -588,7 +588,7 @@ HouseClass* GameMap::ResolveOwner(Delivery::OwnerKind kind) const
     case Delivery::OwnerKind::RandomEnemy:
     {
         std::vector<HouseClass*> pool;
-        for (auto const pHouse : *HouseClass::Array)
+        for (auto const pHouse : HouseClass::Array)
         {
             if (!pHouse || pHouse->Defeated)
                 continue;

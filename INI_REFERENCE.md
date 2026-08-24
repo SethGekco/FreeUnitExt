@@ -189,6 +189,22 @@ ManualFacing.Turret=yes       ; hull stays put, turret tracks your clicks
 `ManualFacing.Turret=yes` on a type with no turret logs a warning and aims the
 hull instead.
 
+> **Making the turret HOLD its aim is Phobos' job, not ours.** Vanilla snaps a
+> turret back to the hull once it loses its target. Phobos already exposes that
+> as `TurretResponse=` (it owns the hook at `0x736B60`), and already defaults it
+> to `no` for `Speed=0` units — which is why an immobile emplacement holds its
+> aim while a fast tank snaps back. Pair the two:
+>
+> ```ini
+> [SOMEVEHICLE]
+> ManualFacing=yes
+> ManualFacing.Turret=yes   ; FreeUnitExt: let the player aim it
+> TurretResponse=no         ; Phobos: and stop it snapping back
+> ```
+>
+> FreeUnitExt deliberately does **not** add its own key for this. It would
+> duplicate a shipped Phobos feature and contend for the same hook.
+
 > **This flag is the whole opt-in.** There is deliberately no hidden `Speed=0`
 > condition: setting `ManualFacing=` on a unit that *can* move will stop it
 > moving, because that is what the flag asks for. The intended use is `Speed=0`

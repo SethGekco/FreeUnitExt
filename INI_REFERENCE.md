@@ -206,8 +206,28 @@ hull instead.
 > duplicate a shipped Phobos feature and contend for the same hook.
 
 > **This flag is the whole opt-in.** There is deliberately no hidden `Speed=0`
-> condition: setting `ManualFacing=` on a unit that *can* move will stop it
-> moving, because that is what the flag asks for. The intended use is `Speed=0`
+> condition in the code.
+>
+> **But you almost certainly want `Speed=0` anyway.** `ManualFacing` only
+> reinterprets the plain move click. It does **not** own movement, so on a
+> `Speed>0` unit everything else still moves it: attack-move (Ctrl+Shift),
+> auto-acquiring a target, scatter, hunt.
+>
+> `Speed=0` is what engages **Phobos'** whole immobilisation suite — its
+> `UnitExt::CannotMove` returns true on `Speed == 0`, which gates its hooks on
+> `Mission_Move`, `Assign_Destination`, `Scatter`, `Hunt`, `Mission_AreaGuard`,
+> `GetFireError` and `Rotation_AI`. Combined:
+>
+> | Want | Set |
+> |---|---|
+> | genuinely immobile | `Speed=0` (Phobos does this) |
+> | ...but still aimable by the player | `ManualFacing=yes` (we re-enable the click) |
+> | ...aiming the turret, not the hull | `ManualFacing.Turret=yes` |
+> | ...and the turret holds its aim | `TurretResponse=no` (Phobos; already the default at `Speed=0`) |
+>
+> Confirmed in-game: a `Speed=0` MCV obeys directional commands and nothing else
+> moves it. A `Speed=7` tank turns its turret on command but still drives off on
+> attack-move and auto-acquire — working as designed, not a defect. The intended use is `Speed=0`
 > emplacements, but the DLL does not second-guess you.
 
 **Test it on a unit that already exists at game start**, not one you build. A

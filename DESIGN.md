@@ -153,6 +153,12 @@ delivery, `.Cell`, `.Spacing`, `.Facing` including `random`, neighbour buildings
 with `OnlyBuilt`, limbo delivery, per-building `SeparateAircraft`, per-pad
 `SeparateAircraft.Types=`/`.Facing`, and `ManualFacing` on both hull and turret.
 
+`FreeUnit.Cell=` uses the **engine's** compass, matching `.Facing=` and the rest
+of YR modding. Note that engine-north renders toward the screen's top-RIGHT on
+an isometric map; the visual top is `NW`. A screen-relative variant was tried and
+reverted — it made the same letters mean different things in `.Cell` and
+`.Facing`, since `.Facing` is a raw DirType that cannot be rotated.
+
 Still unconfirmed: save/load with limbo entries, and multiplayer sync of
 `random`.
 

@@ -151,40 +151,36 @@ namespace Delivery
     };
 
     /*
-     * Unit cell offset for each of the 8 compass directions, SCREEN-RELATIVE.
+     * Unit cell offset for each of the 8 compass directions, in the ENGINE's
+     * frame — the same north the game itself uses.
      *
-     * The map is isometric: screen position is roughly
-     * (cellX - cellY, cellX + cellY). So the naive mapping — N as cell
-     * (0,-1) — renders as up-AND-right, i.e. north-EAST on screen. Confirmed
-     * in-game: `FreeUnit.Cell=N` produced a trail heading visually NE.
+     * Worth knowing, because it surprises people: the map is isometric, so
+     * screen position is roughly (cellX - cellY, cellX + cellY). Engine-north,
+     * cell (0,-1), therefore renders toward the TOP-RIGHT of the screen, not
+     * the top. `FreeUnit.Cell=N` puts the unit up-and-right.
      *
-     * A modder writing `N` means "above the building", not "one cell along the
-     * data's Y axis", so these are rotated 45 degrees to match what the player
-     * actually sees:
+     * This was briefly changed to screen-relative and changed back on purpose.
+     * Rex's call: match the engine, because
+     *   - `FreeUnit.Facing=` is the engine's raw DirType and cannot sensibly be
+     *     rotated, so a screen-relative `.Cell` made the same letters mean two
+     *     different things across two keys;
+     *   - every other YR modding tag and doc uses the engine's compass, so a
+     *     private rotation here would be the odd one out.
      *
-     *   N  -> cell (-1,-1)   straight up on screen
-     *   E  -> cell ( 1,-1)   straight right
-     *   S  -> cell ( 1, 1)   straight down
-     *   W  -> cell (-1, 1)   straight left
-     *
-     * The diagonals land on the cell axes, which is the same 45-degree turn.
-     * Note the four screen-diagonal steps move ONE cell while the screen-cardinal
-     * ones move a cell diagonally — that is inherent to the projection, and it
-     * makes the cardinals visually twice as far per step. `Spacing` counts cells,
-     * not pixels, so a cardinal ray looks more spread out than a diagonal one.
+     * If you want a unit at the visual top of the screen, that is `NW`.
      */
     inline Offset directionStep(int dir)
     {
         switch (((dir % 256) + 256) % 256 / 32)
         {
-        case 0: return { -1, -1 }; // N  — screen up
-        case 1: return {  0, -1 }; // NE — screen up-right
-        case 2: return {  1, -1 }; // E  — screen right
-        case 3: return {  1,  0 }; // SE — screen down-right
-        case 4: return {  1,  1 }; // S  — screen down
-        case 5: return {  0,  1 }; // SW — screen down-left
-        case 6: return { -1,  1 }; // W  — screen left
-        default: return { -1,  0 }; // NW — screen up-left
+        case 0: return {  0, -1 }; // N  — engine north, screen up-RIGHT
+        case 1: return {  1, -1 }; // NE
+        case 2: return {  1,  0 }; // E
+        case 3: return {  1,  1 }; // SE
+        case 4: return {  0,  1 }; // S
+        case 5: return { -1,  1 }; // SW
+        case 6: return { -1,  0 }; // W
+        default: return { -1, -1 }; // NW — screen UP
         }
     }
 

@@ -15,6 +15,16 @@ void FreeUnitExtDLL::ExeRun()
 {
     Patch::ApplyStatic();
 
+    // Stamp WHICH BUILD is actually running.
+    //
+    // A running game holds the DLL image it loaded at launch, so replacing the
+    // file mid-session changes nothing — and byte-verifying the file on disk
+    // proves nothing about the process. That cost several rounds of analysing
+    // behaviour from a build that was no longer on disk. __DATE__/__TIME__ are
+    // baked in at compile time, so this line identifies the build unambiguously
+    // and needs no version bookkeeping.
+    Debug::Log("[FreeUnitExt] build " __DATE__ " " __TIME__ " running\n");
+
     // We deliberately sit BELOW the Ares-lineage hooks inside Grand_Opening
     // rather than replacing them:
     //   0x446AAF  Antares  SkipFreeUnits    — the once-only guard we rely on

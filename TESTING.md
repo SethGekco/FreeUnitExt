@@ -1,6 +1,6 @@
 # FreeUnitExt — testing
 
-## 0. Read this first: the two silent-failure modes
+## 0. Read this first: the three silent-failure modes
 
 **A. The DLL is not injected.** On Linux the actual Syringe inject list is
 `Resources/Compatibility/Unix/wine-game.sh` (line 2), *not*
@@ -15,7 +15,22 @@ grep -i freeunit "$RA2/syringe.log"
 
 No match = not injected. Back up `wine-game.sh` first, then add `-i=FreeUnitExt.dll`.
 
-**B. The DLL is stale.** Confirm the file in the game folder is the one CI just
+**B. The GAME IS STILL RUNNING from before the deploy.** A running process
+holds the DLL image it loaded at launch; copying a new file over it does
+nothing. **Restart the game after every deploy.**
+
+Check which build actually ran — every session stamps it:
+
+```bash
+grep -a "FreeUnitExt] build" debug/debug.log
+```
+
+Compare that timestamp against the deploy. If the build predates it, the
+observations describe old code. This is not hypothetical: two rounds of
+direction analysis were done against a build that had already been replaced on
+disk.
+
+**C. The DLL file is stale.** Confirm the file in the game folder is the one CI just
 built before concluding a fix "doesn't work":
 
 ```bash

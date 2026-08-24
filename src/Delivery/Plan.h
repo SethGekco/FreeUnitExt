@@ -193,6 +193,15 @@ namespace Delivery
         // Who the delivered object belongs to.
         OwnerKind Owner = OwnerKind::Invoker;
 
+        // Index into the list's parallel Teams array, or -1 for none.
+        //
+        // A script cannot be attached to a unit directly — the engine only runs
+        // scripts through a Team — so both FreeUnit.Script= and FreeUnit.Team=
+        // resolve to a TeamType here, and the adapter creates the team and adds
+        // the unit. A team overrides Mission, because a script IS a sequence of
+        // missions and letting both apply would just fight.
+        int TeamIndex = -1;
+
         int  Facing = Dir_Unset;     // which way the delivered object looks
         int  Cell = Dir_Unset;       // which side of the parent it appears on
 

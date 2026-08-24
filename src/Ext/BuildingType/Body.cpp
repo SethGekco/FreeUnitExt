@@ -20,6 +20,9 @@
 #include <InfantryTypeClass.h>
 #include <MapClass.h>
 #include <MissionClass.h>
+#include <ScriptTypeClass.h>
+#include <TeamClass.h>
+#include <TeamTypeClass.h>
 #include <RulesClass.h>
 #include <ScenarioClass.h>
 #include <SessionClass.h>
@@ -28,7 +31,9 @@
 #include <Helpers/Cast.h>
 #include <Utilities/Debug.h>
 
+#include <cstdio>
 #include <cstdlib>
+#include <unordered_map>
 #include <unordered_set>
 #include <string>
 
@@ -301,6 +306,48 @@ namespace
     }
 
     /*
+     * Resolve FreeUnit.Team= / FreeUnit.Script= to a TeamTypeClass.
+     *
+     * A ScriptType cannot be attached to a unit: the engine only ever runs a
+     * script through a TeamClass, which comes from a TeamType. So a named team
+     * is used directly, and a named script gets a minimal TeamType synthesised
+     * around it — cached, so N deliveries of the same script share one type
+     * rather than leaking a TeamType per unit.
+     *
+     * ScriptTypeClass::Find, NOT FindOrAllocate: FindOrAllocate would silently
+     * manufacture an empty script for a typo, which then does nothing forever.
+     * A miss should be a log line, not a phantom script.
+     */
+    TeamTypeClass* SynthesiseTeamFor(ScriptTypeClass* pScript)
+    {
+        static std::unordered_map<ScriptTypeClass*, TeamTypeClass*> cache;
+
+        auto const it = cache.find(pScript);
+        if (it != cache.end())
+            return it->second;
+
+        // The ID only has to be unique and recognisable in a crash dump.
+        char id[0x18] = {};
+        std::snprintf(id, sizeof(id), "FUX_%.18s", pScript->ID);
+
+        auto const pTeam = GameCreate<TeamTypeClass>(id);
+        if (!pTeam)
+            return nullptr;
+
+        pTeam->ScriptType = pScript;
+        pTeam->TaskForce = nullptr;   // we add the member ourselves; nothing to recruit
+        pTeam->Max = 1;
+        pTeam->Autocreate = false;    // must never be picked up by the AI's own team logic
+        pTeam->Prebuild = false;
+        pTeam->Reinforce = false;
+        pTeam->Recruiter = false;
+        pTeam->Loadable = false;
+
+        cache[pScript] = pTeam;
+        return pTeam;
+    }
+
+    /*
      * Parse one delivery list: the type list plus its parallel modifier keys.
      *
      * `prefix` is the key stem ("FreeUnit" or "SeparateAircraft"), so the two
@@ -357,6 +404,8 @@ namespace
         auto const limbos   = ReadBools(pINI, section, key(".Limbo").c_str(), ids.size());
         auto const missions = ReadMissions(pINI, section, key(".Mission").c_str(), ids.size());
         auto const owners   = ReadOwners(pINI, section, key(".Owner").c_str(), ids.size());
+        auto const teamIds   = ReadList(pINI, section, key(".Team").c_str());
+        auto const scriptIds = ReadList(pINI, section, key(".Script").c_str());
 
         for (size_t i = 0; i < types.size(); ++i)
         {
@@ -371,6 +420,58 @@ namespace
             entry.Range = ranges[src] < 1 ? 1 : ranges[src];
             entry.Mission = missions[src];
             entry.Owner = owners[src];
+
+            // Team wins over Script when both name something for the same entry:
+            // a TeamType already carries a script, so honouring both would mean
+            // silently discarding one. A single value broadcasts, like the other
+            // parallel keys.
+            auto pick = [&](std::vector<std::string> const& list) -> const char*
+            {
+                if (list.empty())
+                    return nullptr;
+                if (list.size() == 1)
+                    return list[0].c_str();
+                return src < list.size() ? list[src].c_str() : nullptr;
+            };
+
+            TeamTypeClass* pTeam = nullptr;
+
+            if (auto const teamId = pick(teamIds))
+            {
+                pTeam = TeamTypeClass::Find(teamId);
+                if (!pTeam)
+                {
+                    Debug::Log("[FreeUnitExt] [%s]%s.Team: unknown TeamType '%s'\n",
+                        section, prefix, teamId);
+                }
+            }
+
+            if (!pTeam)
+            {
+                if (auto const scriptId = pick(scriptIds))
+                {
+                    if (auto const pScript = ScriptTypeClass::Find(scriptId))
+                    {
+                        pTeam = SynthesiseTeamFor(pScript);
+                    }
+                    else
+                    {
+                        Debug::Log("[FreeUnitExt] [%s]%s.Script: unknown ScriptType "
+                            "'%s'\n", section, prefix, scriptId);
+                    }
+                }
+            }
+            else if (!scriptIds.empty())
+            {
+                Debug::Log("[FreeUnitExt] [%s]%s: both .Team and .Script are set; "
+                    "the team wins (it already carries a script)\n", section, prefix);
+            }
+
+            if (pTeam)
+            {
+                entry.TeamIndex = int(out.Teams.size());
+                out.Teams.push_back(pTeam);
+            }
 
             if (entry.What == Delivery::Kind::Limbo
                 && types[i]->WhatAmI() != AbstractType::BuildingType)
@@ -625,6 +726,36 @@ HouseClass* GameMap::ResolveOwner(Delivery::OwnerKind kind) const
     return pInvoker;
 }
 
+/*
+ * Put a delivered unit onto a team so its script actually runs.
+ *
+ * Every failure here is deliberately non-fatal. The unit already exists on the
+ * map with a mission; losing its script is a degraded outcome, but destroying
+ * or leaking it would be worse, and a modder chasing "my script did not run"
+ * is far better served by a log line than by a missing unit.
+ */
+void GameMap::AttachTeam(Delivery::Entry const& entry, FootClass* pFoot,
+    HouseClass* pOwner) const
+{
+    auto const pTeamType = this->TeamOf(entry);
+    if (!pTeamType || !pFoot || !pOwner)
+        return;
+
+    auto const pTeam = pTeamType->CreateTeam(pOwner);
+    if (!pTeam)
+    {
+        Debug::Log("[FreeUnitExt]   could not create a team from '%s'\n",
+            pTeamType->ID);
+        return;
+    }
+
+    if (!pTeam->AddMember(pFoot, true))
+    {
+        Debug::Log("[FreeUnitExt]   team '%s' refused the delivered unit\n",
+            pTeamType->ID);
+    }
+}
+
 bool GameMap::place(Delivery::Entry const& entry, Delivery::Offset offset, int facing)
 {
     auto const pType = this->TypeOf(entry);
@@ -711,6 +842,11 @@ bool GameMap::place(Delivery::Entry const& entry, Delivery::Offset offset, int f
                 : (pType->DefaultToGuardArea ? Mission::Area_Guard : Mission::Guard));
 
         pFoot->QueueMission(mission, false);
+
+        // After the mission, not before: the team's script takes the unit over
+        // from here, and the queued mission is only what it falls back to if
+        // the team is ever disbanded.
+        this->AttachTeam(entry, pFoot, pOwner);
     }
 
     return true;

@@ -84,6 +84,46 @@ enemies), the delivery falls back to the invoker rather than dropping the unit.
 > finished, but the same word will mean the superweapon firer or the crate
 > opener if delivery is ever driven from those.
 
+### `FreeUnit.Script=` and `FreeUnit.Team=` (default: none)
+
+Put the delivered unit under AI script control.
+
+```ini
+[NAHAND]
+FreeUnit=E2,E2
+FreeUnit.Script=PatrolPerimeter      ; a ScriptType from aimd.ini
+```
+
+```ini
+[NAHAND]
+FreeUnit=E2,E2
+FreeUnit.Team=PerimeterGuardTeam     ; a TeamType from aimd.ini
+```
+
+**Both keys exist because a ScriptType cannot be attached to a unit.** The engine
+only ever runs a script through a `TeamClass`, which is created from a
+`TeamType`. So:
+
+- **`FreeUnit.Team=`** names a TeamType you already authored — script, taskforce
+  and every AI flag included. This is the robust path: the engine gets exactly
+  what it expects.
+- **`FreeUnit.Script=`** names a ScriptType, and a minimal TeamType is
+  synthesised around it (cached per script, so repeat deliveries share one).
+  Convenient, but the synthesised type has **no TaskForce** and default AI flags.
+  If a script misbehaves under `.Script=`, author a TeamType and use `.Team=`.
+
+If both are set on the same entry, **`.Team=` wins** — a TeamType already carries
+a script, so honouring both would mean silently discarding one. A warning is
+logged.
+
+A team **overrides `FreeUnit.Mission=`**, because a script is a sequence of
+missions; the queued mission remains only as the fallback if the team disbands.
+
+Failures are non-fatal by design: an unknown script or team, a team that refuses
+the unit, or a team that cannot be created all log and leave the unit on the map
+with its mission. Losing a script is a degraded outcome; losing the unit would be
+worse.
+
 ### What mission a delivered unit starts on
 
 Harvesters start on `Harvest`. Everything else follows the type's own

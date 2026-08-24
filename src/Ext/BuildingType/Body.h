@@ -22,6 +22,8 @@
 class BuildingClass;
 class CCINIClass;
 class HouseClass;
+class TeamTypeClass;
+class FootClass;
 
 // Buildings this DLL delivered, so their own Grand_Opening can tell "delivered"
 // from "built". A depth counter does NOT work here: Grand_Opening is DEFERRED,
@@ -54,8 +56,12 @@ struct DeliveryList
     std::vector<TechnoTypeClass*> Types;
     std::vector<Delivery::Entry>  Entries;
 
+    // Parallel to Entries via Entry::TeamIndex. Holds whatever FreeUnit.Team=
+    // named, or the TeamType synthesised for a FreeUnit.Script=.
+    std::vector<TeamTypeClass*>   Teams;
+
     bool empty() const { return this->Entries.empty(); }
-    void clear() { this->Types.clear(); this->Entries.clear(); }
+    void clear() { this->Types.clear(); this->Entries.clear(); this->Teams.clear(); }
 };
 
 struct BuildingTypeData
@@ -107,10 +113,25 @@ struct BuildingTypeData
         for (std::size_t i = 0; i < this->Neighbours.Entries.size(); ++i)
         {
             auto entry = this->Neighbours.Entries[i];
-            entry.TypeIndex = int(out.Types.size());
+            auto const& src = this->Neighbours.Entries[i];
 
-            out.Types.push_back(this->Neighbours.Types[std::size_t(
-                this->Neighbours.Entries[i].TypeIndex)]);
+            entry.TypeIndex = int(out.Types.size());
+            out.Types.push_back(this->Neighbours.Types[std::size_t(src.TypeIndex)]);
+
+            // Teams are a separate parallel array, so the index needs remapping
+            // too — otherwise a neighbour would inherit whichever team happened
+            // to sit at its old index in the other list.
+            if (src.TeamIndex >= 0
+                && std::size_t(src.TeamIndex) < this->Neighbours.Teams.size())
+            {
+                entry.TeamIndex = int(out.Teams.size());
+                out.Teams.push_back(this->Neighbours.Teams[std::size_t(src.TeamIndex)]);
+            }
+            else
+            {
+                entry.TeamIndex = -1;
+            }
+
             out.Entries.push_back(entry);
         }
 
@@ -152,12 +173,24 @@ public:
     // FreeUnit.Owner= -> a real house. Random* variants use the synced RNG.
     HouseClass* ResolveOwner(Delivery::OwnerKind kind) const;
 
+    // Put a delivered unit on a team so its script runs. No-op when the entry
+    // has no team. Failure is non-fatal: the unit keeps its mission.
+    void AttachTeam(Delivery::Entry const& entry, FootClass* pFoot,
+        HouseClass* pOwner) const;
+
     bool canPlace(Delivery::Entry const& entry, Delivery::Offset offset) const override;
     bool place(Delivery::Entry const& entry, Delivery::Offset offset, int facing) override;
     bool placeLimbo(Delivery::Entry const& entry) override;
     int  randomRanged(int low, int high) override;
 
 private:
+    TeamTypeClass* TeamOf(Delivery::Entry const& entry) const
+    {
+        return entry.TeamIndex >= 0 && std::size_t(entry.TeamIndex) < this->List.Teams.size()
+            ? this->List.Teams[std::size_t(entry.TeamIndex)]
+            : nullptr;
+    }
+
     TechnoTypeClass* TypeOf(Delivery::Entry const& entry) const
     {
         return entry.TypeIndex >= 0 && std::size_t(entry.TypeIndex) < this->List.Types.size()

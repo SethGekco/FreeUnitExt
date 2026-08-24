@@ -420,3 +420,40 @@ you predicted. Set at creation, clear at destruction, check without mutating.
 
 *Status: building path implemented and CI-green. The unit path (mark-built) remains
 a recommendation for when the unit-delivery trigger lands — same principle.*
+
+### Post-fix log analysis (2026-08-23): guard works, but delivery double-fires
+
+Reading `debug/debug.20260823-204429.log` after the persistent-mark fix shipped:
+
+**The OnlyBuilt guard is confirmed working.** `deliver [GAPOWR]/[GAPILE]: skipped,
+this one was DELIVERED not built` appears 7×, and there are **0** `ABORTED at depth`
+lines — the unbounded delivery chain is gone.
+
+**But every delivery double-fires.** Each building's deliver hook runs twice,
+back-to-back, and delivers *both* times, so a delivery yields 2× its free units —
+which reads in-game as "still chaining." Evidence (consecutive log lines):
+`GAWEAP: 2 delivered` on 2393 **and** 2394; `GAPILE: 4 delivered` on 739/740;
+`GAREFN: 1 delivered` on 1589/1590.
+
+**Leading hypothesis.** The deliver hook (`0x446AE3`) returns `PadAircraftBlock`
+(`0x446EE2`), jumping over the vanilla instruction that sets the once-only
+"FreeUnits_Done" marker. Antares' guard at `0x446AAF` sits above us and only
+*checks* that marker; if the *set* lives in the block we skip, a second
+`Place`/`Grand_Opening` on the same building is unguarded and delivers again.
+
+**Fix options.**
+1. Set the once-only marker (`[ebp+0x300]` / FreeUnits-done field) inside the
+   deliver hook before returning, so a second `Place` is a no-op. Preferred —
+   idempotent across however many times `Place` fires, same principle as §8.
+2. If setting the engine flag is impractical, keep a private per-building
+   "already delivered its list" `set<BuildingClass*>`, checked on hook entry and
+   cleared in the existing `0x6F4500` dtor hook.
+
+**Also verify (possible second, independent gap).** `GAWEAP`/`GAREFN` deliver
+while `GAPOWR`/`GAPILE` are skipped. Confirm whether the former are player-built
+(legitimate) or delivered-chain buildings; if delivered, check that `place()`
+actually `Mark`s them (Kind::Building) and that their `FreeUnit.OnlyBuilt` is set,
+otherwise the guard has a per-type hole separate from the double-fire.
+
+*Diagnosis only — no code change made for the double-fire; it touches the same
+Grand_Opening hook logic under active development.*

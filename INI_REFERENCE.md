@@ -37,6 +37,27 @@ default; write `-` to skip an entry explicitly.
 | `FreeUnit.Limbo=` | boolean | `no` | deliver into limbo instead of onto the map (buildings only) |
 | `FreeUnit.Range=` | integer ≥ 1 | `1` | how far a *building* entry may be placed from the parent |
 
+### What mission a delivered unit starts on
+
+Harvesters start on `Harvest`. Everything else follows the type's own
+**`DefaultToGuardArea=`**:
+
+| `DefaultToGuardArea=` | Mission | Behaviour |
+|---|---|---|
+| `yes` (engine default) | `Area_Guard` | pursues targets within a radius |
+| `no` | `Guard` | holds position, fires only at what comes to it |
+
+FreeUnitExt does not force either one. If you do not want delivered units
+wandering off after targets, set `DefaultToGuardArea=no` on the type.
+
+Related existing tags worth knowing, none of which are ours:
+
+| Tag | Owner | Effect |
+|---|---|---|
+| `CanPassiveAquire=no` | vanilla (note the spelling) | never auto-acquires a target |
+| `CanRetaliate=no` | vanilla | never chases whoever shot it |
+| `Speed=0` | vanilla + Phobos | genuinely immobile — blocks attack-move, scatter, hunt |
+
 ### `FreeUnit.OnlyBuilt=` (boolean, default `yes`)
 
 Deliver only when this building was genuinely **built**, not when it was itself

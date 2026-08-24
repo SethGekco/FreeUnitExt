@@ -529,12 +529,21 @@ bool GameMap::place(Delivery::Entry const& entry, Delivery::Offset offset, int f
     // A free unit with nothing to do should guard its birthplace. Harvesters
     // are the one type with a better default — the same distinction Antares
     // makes at 0x446E9F.
+    //
+    // Guard vs Area_Guard is NOT ours to force. Area_Guard pursues targets
+    // within a radius; Guard holds position and only fires at what comes to it.
+    // The engine already exposes that choice as DefaultToGuardArea=, so honour
+    // it rather than hardcoding the chasing variant — otherwise a modder who set
+    // DefaultToGuardArea=no would find their delivered units chasing anyway,
+    // with no way to stop it short of not using this DLL.
     if (auto const pFoot = abstract_cast<FootClass*>(pObject))
     {
-        const auto mission = pType->WhatAmI() == AbstractType::UnitType
-            && static_cast<UnitTypeClass*>(pType)->Harvester
+        const bool harvester = pType->WhatAmI() == AbstractType::UnitType
+            && static_cast<UnitTypeClass*>(pType)->Harvester;
+
+        const auto mission = harvester
             ? Mission::Harvest
-            : Mission::Area_Guard;
+            : (pType->DefaultToGuardArea ? Mission::Area_Guard : Mission::Guard);
 
         pFoot->QueueMission(mission, false);
     }

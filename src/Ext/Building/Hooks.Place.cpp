@@ -205,8 +205,9 @@ DEFINE_HOOK(0x446AE3, BuildingClass_GrandOpening_Deliver, 0x6)
 
     if (wasDelivered && pData->OnlyBuilt)
     {
-        Debug::Log("[FreeUnitExt] deliver [%s]: skipped, this one was DELIVERED "
-            "not built (FreeUnit.OnlyBuilt=yes)\n", pThis->Type->ID);
+        Debug::Log("[FreeUnitExt] deliver [%s@%p]: skipped, this one was DELIVERED "
+            "not built (FreeUnit.OnlyBuilt=yes)\n", pThis->Type->ID,
+            static_cast<void*>(pThis));
         return PadAircraftBlock;
     }
 
@@ -244,9 +245,17 @@ DEFINE_HOOK(0x446AE3, BuildingClass_GrandOpening_Deliver, 0x6)
         parentRadius);
 
 
-    Debug::Log("[FreeUnitExt] deliver [%s]: %d delivered, %d failed (of %u), "
-        "foundation %d -> parentRadius %d\n",
-        pType->ID, result.Delivered, result.Failed,
+    // Identify the INSTANCE and its owner, not just the type.
+    //
+    // Without this, two houses finishing the same building type on adjacent
+    // frames produce two identical log lines, which reads exactly like one
+    // building delivering twice. That misreading cost a cross-chat debugging
+    // round chasing a "double-fire" that did not exist.
+    Debug::Log("[FreeUnitExt] deliver [%s@%p owner=%s]: %d delivered, %d failed "
+        "(of %u), foundation %d -> parentRadius %d\n",
+        pType->ID, static_cast<void*>(pThis),
+        pThis->Owner && pThis->Owner->Type ? pThis->Owner->Type->ID : "?",
+        result.Delivered, result.Failed,
         unsigned(list.Entries.size()), foundation, parentRadius);
 
     return PadAircraftBlock;

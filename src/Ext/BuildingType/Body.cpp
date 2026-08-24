@@ -499,6 +499,19 @@ bool GameMap::place(Delivery::Entry const& entry, Delivery::Offset offset, int f
     // aircraft path does, because an aircraft is meant to sit on the building.
     // Letting Unlimbo refuse means place() returns false and the planner walks
     // on to the next candidate cell.
+    // MARK BEFORE UNLIMBO, not after.
+    //
+    // For a BuildingType, Unlimbo runs Grand_Opening synchronously — the very
+    // function this DLL hooks. Marking afterwards means the delivered building
+    // executes its own FreeUnit list while still looking "built", so
+    // [GAPOWR]FreeUnit.Buildings=GAPOWR chained until the depth-4 abort caught
+    // it. (Observed: 4 plants, then "ABORTED at depth 4".)
+    //
+    // Marking a techno that then fails to Unlimbo is harmless: the object is
+    // destroyed immediately below, and Unmark is called from the dtor hook.
+    if (entry.What == Delivery::Kind::Building)
+        DeliveredBuildings::Mark(pObject);
+
     const bool ok = pObject->Unlimbo(coords, dir);
 
     if (!ok)
@@ -511,8 +524,6 @@ bool GameMap::place(Delivery::Entry const& entry, Delivery::Offset offset, int f
         return false;
     }
 
-    if (entry.What == Delivery::Kind::Building)
-        DeliveredBuildings::Mark(pObject);
 
 
     // A free unit with nothing to do should guard its birthplace. Harvesters

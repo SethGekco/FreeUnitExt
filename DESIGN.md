@@ -148,11 +148,13 @@ Phase 1 **working in-game** (2026-08-21). Confirmed by Rex: four infantry per
 barracks for the human player, four aircraft on four numbered pads, and
 `FreeUnit.Buildings=` delivering exactly one neighbour instead of chaining.
 
-`ManualFacing` confirmed 2026-08-22: an immobile MCV turns to face right-clicked
-cells and still deploys normally.
+**Every scenario confirmed in-game as of 2026-08-24** — multi-unit and infantry
+delivery, `.Cell`, `.Spacing`, `.Facing` including `random`, neighbour buildings
+with `OnlyBuilt`, limbo delivery, per-building `SeparateAircraft`, per-pad
+`SeparateAircraft.Types=`/`.Facing`, and `ManualFacing` on both hull and turret.
 
-Still unconfirmed in-game: limbo delivery (#7), `.Spacing` (#2), per-pad
-`.Facing` (#9), `ManualFacing.Turret=`, and save/load of limbo entries.
+Still unconfirmed: save/load with limbo entries, and multiplayer sync of
+`random`.
 
 | Piece | State |
 |---|---|

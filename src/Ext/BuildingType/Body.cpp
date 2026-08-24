@@ -19,6 +19,7 @@
 #include <HouseClass.h>
 #include <InfantryTypeClass.h>
 #include <MapClass.h>
+#include <MissionClass.h>
 #include <RulesClass.h>
 #include <ScenarioClass.h>
 #include <SessionClass.h>
@@ -219,6 +220,87 @@ namespace
     }
 
     /*
+     * Mission names, resolved by the ENGINE's own table.
+     *
+     * MissionControlClass::FindIndex is the same lookup the game uses for
+     * [General]/mission INI keys, so every name ModEnc documents works here for
+     * free and stays correct if a mod redefines the table. Hand-rolling a
+     * name->enum map would drift from the engine the first time anyone touched
+     * Mission Control.
+     */
+    std::vector<int> ReadMissions(CCINIClass* pINI, const char* section,
+        const char* key, size_t count)
+    {
+        std::vector<int> out(count, Delivery::Mission_Unset);
+
+        auto const tokens = ReadList(pINI, section, key);
+        if (tokens.empty())
+            return out;
+
+        auto resolve = [&](std::string const& token) -> int
+        {
+            const auto mission = MissionControlClass::FindIndex(token.c_str());
+            if (mission == Mission::None)
+            {
+                Debug::Log("[FreeUnitExt] [%s]%s: '%s' is not a known mission "
+                    "(see Mission Control) — leaving the default\n",
+                    section, key, token.c_str());
+                return Delivery::Mission_Unset;
+            }
+            return int(mission);
+        };
+
+        if (tokens.size() == 1)
+        {
+            const int m = resolve(tokens[0]);
+            for (auto& slot : out)
+                slot = m;
+            return out;
+        }
+
+        for (size_t i = 0; i < tokens.size() && i < count; ++i)
+            out[i] = resolve(tokens[i]);
+
+        return out;
+    }
+
+    std::vector<Delivery::OwnerKind> ReadOwners(CCINIClass* pINI, const char* section,
+        const char* key, size_t count)
+    {
+        std::vector<Delivery::OwnerKind> out(count, Delivery::OwnerKind::Invoker);
+
+        auto const tokens = ReadList(pINI, section, key);
+        if (tokens.empty())
+            return out;
+
+        auto resolve = [&](std::string const& token)
+        {
+            bool ok = false;
+            auto const kind = Delivery::parseOwner(token.c_str(), &ok);
+            if (!ok)
+            {
+                Debug::Log("[FreeUnitExt] [%s]%s: '%s' is not a known owner "
+                    "(Invoker/Civilian/Special/Neutral/Random/RandomAlly/"
+                    "RandomEnemy) — using Invoker\n", section, key, token.c_str());
+            }
+            return kind;
+        };
+
+        if (tokens.size() == 1)
+        {
+            auto const kind = resolve(tokens[0]);
+            for (auto& slot : out)
+                slot = kind;
+            return out;
+        }
+
+        for (size_t i = 0; i < tokens.size() && i < count; ++i)
+            out[i] = resolve(tokens[i]);
+
+        return out;
+    }
+
+    /*
      * Parse one delivery list: the type list plus its parallel modifier keys.
      *
      * `prefix` is the key stem ("FreeUnit" or "SeparateAircraft"), so the two
@@ -273,6 +355,8 @@ namespace
         auto const spacings = ReadInts(pINI, section, key(".Spacing").c_str(), ids.size(), 0);
         auto const ranges   = ReadInts(pINI, section, key(".Range").c_str(), ids.size(), 1);
         auto const limbos   = ReadBools(pINI, section, key(".Limbo").c_str(), ids.size());
+        auto const missions = ReadMissions(pINI, section, key(".Mission").c_str(), ids.size());
+        auto const owners   = ReadOwners(pINI, section, key(".Owner").c_str(), ids.size());
 
         for (size_t i = 0; i < types.size(); ++i)
         {
@@ -285,6 +369,8 @@ namespace
             entry.Cell = cells[src];
             entry.Spacing = spacings[src] < 0 ? 0 : spacings[src];
             entry.Range = ranges[src] < 1 ? 1 : ranges[src];
+            entry.Mission = missions[src];
+            entry.Owner = owners[src];
 
             if (entry.What == Delivery::Kind::Limbo
                 && types[i]->WhatAmI() != AbstractType::BuildingType)
@@ -464,13 +550,88 @@ bool GameMap::canPlace(Delivery::Entry const& entry, Delivery::Offset offset) co
         /*isBridge=*/false);
 }
 
+/*
+ * Resolve FreeUnit.Owner= to an actual house.
+ *
+ * Every Random* variant draws from the SYNCED scenario RNG, because ownership
+ * decides who shoots whom — two clients disagreeing would desync the match, not
+ * merely look odd. Falling back to the invoker on any miss is deliberate: a
+ * match with no neutral house should still deliver the unit to somebody rather
+ * than drop it or crash.
+ */
+HouseClass* GameMap::ResolveOwner(Delivery::OwnerKind kind) const
+{
+    auto const pInvoker = this->Parent->Owner;
+
+    switch (kind)
+    {
+    case Delivery::OwnerKind::Invoker:
+        return pInvoker;
+
+    case Delivery::OwnerKind::Civilian:
+        if (auto const pHouse = HouseClass::FindCivilianSide())
+            return pHouse;
+        break;
+
+    case Delivery::OwnerKind::Special:
+        if (auto const pHouse = HouseClass::FindSpecial())
+            return pHouse;
+        break;
+
+    case Delivery::OwnerKind::Neutral:
+        if (auto const pHouse = HouseClass::FindNeutral())
+            return pHouse;
+        break;
+
+    case Delivery::OwnerKind::Random:
+    case Delivery::OwnerKind::RandomAlly:
+    case Delivery::OwnerKind::RandomEnemy:
+    {
+        std::vector<HouseClass*> pool;
+        for (auto const pHouse : *HouseClass::Array)
+        {
+            if (!pHouse || pHouse->Defeated)
+                continue;
+
+            switch (kind)
+            {
+            case Delivery::OwnerKind::Random:
+                pool.push_back(pHouse);
+                break;
+            case Delivery::OwnerKind::RandomAlly:
+                // Allies only, and never the invoker itself — "give it to a
+                // friend" means somebody else, otherwise this is just Invoker.
+                if (pHouse != pInvoker && pInvoker->IsAlliedWith(pHouse))
+                    pool.push_back(pHouse);
+                break;
+            default:  // RandomEnemy
+                if (pHouse != pInvoker && !pInvoker->IsAlliedWith(pHouse)
+                    && !pHouse->IsNeutral())
+                    pool.push_back(pHouse);
+                break;
+            }
+        }
+
+        if (!pool.empty())
+        {
+            const int pick = ScenarioClass::Instance->Random.RandomRanged(
+                0, int(pool.size()) - 1);
+            return pool[std::size_t(pick)];
+        }
+        break;
+    }
+    }
+
+    return pInvoker;
+}
+
 bool GameMap::place(Delivery::Entry const& entry, Delivery::Offset offset, int facing)
 {
     auto const pType = this->TypeOf(entry);
     if (!pType)
         return false;
 
-    auto const pOwner = this->Parent->Owner;
+    auto const pOwner = this->ResolveOwner(entry.Owner);
 
     CellStruct target = ParentCell(this->Parent);
     target.X = short(target.X + offset.X);
@@ -541,9 +702,13 @@ bool GameMap::place(Delivery::Entry const& entry, Delivery::Offset offset, int f
         const bool harvester = pType->WhatAmI() == AbstractType::UnitType
             && static_cast<UnitTypeClass*>(pType)->Harvester;
 
-        const auto mission = harvester
-            ? Mission::Harvest
-            : (pType->DefaultToGuardArea ? Mission::Area_Guard : Mission::Guard);
+        // An explicit FreeUnit.Mission= wins outright. It is the modder saying
+        // what this unit is for, which beats any default we could infer.
+        const auto mission = entry.Mission != Delivery::Mission_Unset
+            ? static_cast<Mission>(entry.Mission)
+            : (harvester
+                ? Mission::Harvest
+                : (pType->DefaultToGuardArea ? Mission::Area_Guard : Mission::Guard));
 
         pFoot->QueueMission(mission, false);
     }
@@ -558,7 +723,7 @@ bool GameMap::placeLimbo(Delivery::Entry const& entry)
         return false;
 
     auto const pBuildingType = static_cast<BuildingTypeClass*>(pType);
-    auto const pOwner = this->Parent->Owner;
+    auto const pOwner = this->ResolveOwner(entry.Owner);
 
     // BuildLimit is checked before creation, mirroring Phobos' LimboDelivery.
     if (pBuildingType->BuildLimit > 0)

@@ -40,6 +40,8 @@ public:
         int TypeIndex;
         Delivery::Offset Where;
         int Facing;
+        int Mission;
+        Delivery::OwnerKind Owner;
     };
 
     std::set<std::pair<int, int>> Blocked;
@@ -66,7 +68,7 @@ public:
 
     bool place(Delivery::Entry const& entry, Delivery::Offset offset, int facing) override
     {
-        Log.push_back({ entry.TypeIndex, offset, facing });
+        Log.push_back({ entry.TypeIndex, offset, facing, entry.Mission, entry.Owner });
         return true;
     }
 
@@ -187,6 +189,56 @@ static void test_engineFrameDirections()
         seen.insert({ step.X, step.Y });
     }
     check(seen.size() == 8, "all eight compass points map to distinct cells");
+}
+
+static void test_parseOwner()
+{
+    std::printf("parseOwner\n");
+
+    bool ok = false;
+    check(Delivery::parseOwner("Invoker", &ok) == Delivery::OwnerKind::Invoker && ok,
+        "Invoker parses");
+    check(Delivery::parseOwner("civilian", &ok) == Delivery::OwnerKind::Civilian && ok,
+        "lowercase civilian parses");
+    check(Delivery::parseOwner("RandomEnemy", &ok) == Delivery::OwnerKind::RandomEnemy && ok,
+        "RandomEnemy parses, mixed case");
+    check(Delivery::parseOwner("RANDOMALLY", &ok) == Delivery::OwnerKind::RandomAlly && ok,
+        "uppercase RandomAlly parses");
+
+    // A typo must be reported, not silently treated as a valid choice — an
+    // owner that quietly falls back is how a unit ends up on the wrong side
+    // with nothing in the log to explain it.
+    Delivery::parseOwner("Enemy", &ok);
+    check(!ok, "unknown owner reports failure");
+    check(Delivery::parseOwner("Enemy", &ok) == Delivery::OwnerKind::Invoker,
+        "...and still yields a usable default");
+
+    Delivery::parseOwner("", &ok);
+    check(!ok, "empty token reports failure");
+}
+
+static void test_missionAndOwnerAreCarried()
+{
+    std::printf("resolve — Mission and Owner reach the adapter untouched\n");
+
+    // The planner must not interpret these; it only carries them. Anything else
+    // would put engine policy in the pure layer.
+    FakeMap map;
+    auto a = foot(700);
+    a.Cell = Delivery::Dir_N;
+    a.Mission = 11;                                  // Area_Guard
+    a.Owner = Delivery::OwnerKind::RandomEnemy;
+
+    auto b = foot(701);
+    b.Cell = Delivery::Dir_N;
+    // b keeps the defaults
+
+    auto result = Delivery::resolve({ a, b }, map, Delivery::Dir_N);
+    check(result.Delivered == 2, "both entries delivered");
+    check(map.Log[0].Mission == 11, "explicit mission carried through");
+    check(map.Log[0].Owner == Delivery::OwnerKind::RandomEnemy, "explicit owner carried through");
+    check(map.Log[1].Mission == Delivery::Mission_Unset, "unset mission stays unset");
+    check(map.Log[1].Owner == Delivery::OwnerKind::Invoker, "owner defaults to Invoker");
 }
 
 static void test_multipleUnitsAndSpacing()
@@ -428,9 +480,11 @@ static void test_parentRadiusClearsFootprint()
 int main()
 {
     test_parseDirection();
+    test_parseOwner();
     test_directionRayIsFirst();
     test_engineFrameDirections();
     test_multipleUnitsAndSpacing();
+    test_missionAndOwnerAreCarried();
     test_blockedRayFallsBackToRing();
     test_facingInheritanceAndRandom();
     test_randomCellUsesRng();

@@ -111,10 +111,87 @@ namespace Delivery
         Limbo,     // never touches the map; exists only to satisfy prerequisites
     };
 
+    /*
+     * Who owns a delivered object.
+     *
+     * `Invoker` — whoever caused the delivery (the building's owner). Every
+     * other value hands the object to somebody else, which is how you build
+     * neutral tech defenders, civilian bystanders, or a hostile "ambush"
+     * garrison that spawns already belonging to an enemy.
+     *
+     * The Random* variants resolve through the SYNCED RNG in the adapter, never
+     * a local one — an owner that differed between clients would desync
+     * instantly and look like a physics bug.
+     */
+    enum class OwnerKind
+    {
+        Invoker,       // default: the delivering building's house
+        Civilian,      // the civilian side
+        Special,       // the "special" house
+        Neutral,       // the neutral house
+        Random,        // any house in the game
+        RandomAlly,    // any house allied to the invoker (invoker excluded)
+        RandomEnemy,   // any house not allied to the invoker
+    };
+
+    inline OwnerKind parseOwner(const char* token, bool* ok = nullptr)
+    {
+        struct Named { const char* Name; OwnerKind Kind; };
+        static const Named names[] = {
+            { "invoker",     OwnerKind::Invoker     },
+            { "owner",       OwnerKind::Invoker     },
+            { "civilian",    OwnerKind::Civilian    },
+            { "special",     OwnerKind::Special     },
+            { "neutral",     OwnerKind::Neutral     },
+            { "random",      OwnerKind::Random      },
+            { "randomally",  OwnerKind::RandomAlly  },
+            { "randomenemy", OwnerKind::RandomEnemy },
+        };
+
+        auto lower = [](char c) { return (c >= 'A' && c <= 'Z') ? char(c + 32) : c; };
+        auto equals = [&](const char* a, const char* b)
+        {
+            while (*a && *b)
+            {
+                if (lower(*a) != lower(*b))
+                    return false;
+                ++a; ++b;
+            }
+            return !*a && !*b;
+        };
+
+        if (token && *token)
+        {
+            for (auto const& named : names)
+            {
+                if (equals(token, named.Name))
+                {
+                    if (ok) *ok = true;
+                    return named.Kind;
+                }
+            }
+        }
+
+        if (ok) *ok = false;
+        return OwnerKind::Invoker;
+    }
+
+    // No mission requested; the adapter picks its usual default.
+    constexpr int Mission_Unset = -1;
+
     struct Entry
     {
         int  TypeIndex = -1;         // index into the engine's type array
         Kind What = Kind::Foot;
+
+        // Raw engine Mission value, resolved from the name by the parser via
+        // the engine's own MissionControlClass lookup. -1 leaves the adapter's
+        // default (Harvest for harvesters, otherwise the type's
+        // DefaultToGuardArea choice).
+        int  Mission = Mission_Unset;
+
+        // Who the delivered object belongs to.
+        OwnerKind Owner = OwnerKind::Invoker;
 
         int  Facing = Dir_Unset;     // which way the delivered object looks
         int  Cell = Dir_Unset;       // which side of the parent it appears on

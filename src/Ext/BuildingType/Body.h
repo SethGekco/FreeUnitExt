@@ -21,6 +21,7 @@
 
 class BuildingClass;
 class CCINIClass;
+class HouseClass;
 
 // Buildings this DLL delivered, so their own Grand_Opening can tell "delivered"
 // from "built". A depth counter does NOT work here: Grand_Opening is DEFERRED,
@@ -147,6 +148,9 @@ public:
     GameMap(BuildingClass* pParent, DeliveryList const& list)
         : Parent(pParent), List(list)
     { }
+
+    // FreeUnit.Owner= -> a real house. Random* variants use the synced RNG.
+    HouseClass* ResolveOwner(Delivery::OwnerKind kind) const;
 
     bool canPlace(Delivery::Entry const& entry, Delivery::Offset offset) const override;
     bool place(Delivery::Entry const& entry, Delivery::Offset offset, int facing) override;

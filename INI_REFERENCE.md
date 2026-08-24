@@ -37,6 +37,53 @@ default; write `-` to skip an entry explicitly.
 | `FreeUnit.Limbo=` | boolean | `no` | deliver into limbo instead of onto the map (buildings only) |
 | `FreeUnit.Range=` | integer ≥ 1 | `1` | how far a *building* entry may be placed from the parent |
 
+### `FreeUnit.Mission=` (MissionType, default: see below)
+
+```ini
+[GAPILE]
+FreeUnit=E1,E1,E1
+FreeUnit.Mission=Guard,Area_Guard,Sleep
+```
+
+Any mission name the engine knows — the list is resolved through the game's own
+`Mission Control` table, so every name on
+[ModEnc's Mission Control page](https://modenc.renegadeprojects.com/Mission_Control)
+works, and a mod that redefines the table keeps working too. An unknown name
+logs a warning and leaves the default.
+
+This is a *starting* mission. The player can override most of them by giving an
+order, which is usually what you want. If you want a unit that cannot be
+commanded, that is a property of the unit (`Speed=0`, `CanPassiveAquire=no`,
+Phobos' immobilisation), not of this key — see `ManualFacing` below.
+
+### `FreeUnit.Owner=` (default `Invoker`)
+
+Who the delivered object belongs to.
+
+| Value | Meaning |
+|---|---|
+| `Invoker` | the house that caused the delivery — the building's owner *(default)* |
+| `Civilian` | the civilian side |
+| `Special` | the special house |
+| `Neutral` | the neutral house |
+| `Random` | any house still in the game |
+| `RandomAlly` | any house allied to the invoker, **excluding the invoker** |
+| `RandomEnemy` | any non-allied, non-neutral house |
+
+```ini
+[CATECH]
+FreeUnit=E1,E1
+FreeUnit.Owner=Neutral        ; tech building comes with neutral defenders
+```
+
+Every `Random*` variant draws from the **synced scenario RNG**, so all clients
+agree. If the requested house does not exist in this match (no neutral house, no
+enemies), the delivery falls back to the invoker rather than dropping the unit.
+
+> `Invoker` is named for the general case: today it is the building that
+> finished, but the same word will mean the superweapon firer or the crate
+> opener if delivery is ever driven from those.
+
 ### What mission a delivered unit starts on
 
 Harvesters start on `Harvest`. Everything else follows the type's own

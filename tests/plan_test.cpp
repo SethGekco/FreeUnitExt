@@ -191,6 +191,26 @@ static void test_engineFrameDirections()
     check(seen.size() == 8, "all eight compass points map to distinct cells");
 }
 
+static void test_splitListKeepsInternalSpaces()
+{
+    std::printf("splitList — outer whitespace trimmed, inner preserved\n");
+
+    auto a = Delivery::splitList("Sleep, Area Guard ,Hunt");
+    check(a.size() == 3, "three tokens");
+    check(a[0] == "Sleep", "leading token clean");
+    check(a[1] == "Area Guard", "INTERNAL space preserved — engine mission names need it");
+    check(a[2] == "Hunt", "trailing token clean");
+
+    auto b = Delivery::splitList("  Paradrop Approach  ");
+    check(b.size() == 1 && b[0] == "Paradrop Approach", "outer whitespace trimmed both sides");
+
+    auto c = Delivery::splitList("A,,B");
+    check(c.size() == 2 && c[0] == "A" && c[1] == "B", "empty tokens dropped");
+
+    auto d = Delivery::splitList("   ,  ");
+    check(d.empty(), "all-whitespace input yields nothing");
+}
+
 static void test_parseOwner()
 {
     std::printf("parseOwner\n");
@@ -480,6 +500,7 @@ static void test_parentRadiusClearsFootprint()
 int main()
 {
     test_parseDirection();
+    test_splitListKeepsInternalSpaces();
     test_parseOwner();
     test_directionRayIsFirst();
     test_engineFrameDirections();

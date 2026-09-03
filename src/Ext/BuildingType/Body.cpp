@@ -67,22 +67,42 @@ namespace DeliveredBuildings
 // =============================================================================
 namespace
 {
+    /*
+     * Split a comma list, trimming only each token's OUTER whitespace.
+     *
+     * Internal spaces are SIGNIFICANT. This originally stripped every space,
+     * which is harmless for type IDs and direction names but silently destroys
+     * the engine's own mission names — "Area Guard", "Paradrop Approach",
+     * "Spyplane Overfly" — turning them into unmatchable garbage that would
+     * have looked like FreeUnit.Mission= simply not working.
+     */
     std::vector<std::string> SplitList(const char* buffer)
     {
         std::vector<std::string> out;
+
+        auto flush = [&out](std::string token)
+        {
+            const auto first = token.find_first_not_of(" \t");
+            if (first == std::string::npos)
+                return;                       // all whitespace: not a token
+            const auto last = token.find_last_not_of(" \t");
+            out.push_back(token.substr(first, last - first + 1));
+        };
+
         std::string cur;
         for (const char* p = buffer; p && *p; ++p)
         {
             if (*p == ',')
             {
-                if (!cur.empty()) { out.push_back(cur); cur.clear(); }
+                flush(cur);
+                cur.clear();
             }
-            else if (*p != ' ' && *p != '\t')
+            else
             {
                 cur += *p;
             }
         }
-        if (!cur.empty()) out.push_back(cur);
+        flush(cur);
         return out;
     }
 

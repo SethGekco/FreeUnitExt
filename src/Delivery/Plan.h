@@ -13,6 +13,7 @@
  * SeparateAircraft.Types= and the "comes with buildings" feature are all just
  * lists of entries resolved by the same engine.
  */
+#include <string>
 #include <vector>
 
 namespace Delivery
@@ -178,6 +179,38 @@ namespace Delivery
 
     // No mission requested; the adapter picks its usual default.
     constexpr int Mission_Unset = -1;
+
+    /*
+     * Split a comma list, trimming each token's OUTER whitespace only.
+     *
+     * Lives here purely so the host tests can pin it. Internal spaces matter:
+     * the engine's mission names include "Area Guard" and "Paradrop Approach",
+     * and an implementation that stripped all whitespace would mangle them into
+     * names nothing matches — a silent failure that reads as "the key does
+     * nothing".
+     */
+    inline std::vector<std::string> splitList(const char* buffer)
+    {
+        std::vector<std::string> out;
+
+        auto flush = [&out](std::string const& token)
+        {
+            const auto first = token.find_first_not_of(" \t");
+            if (first == std::string::npos)
+                return;
+            const auto last = token.find_last_not_of(" \t");
+            out.push_back(token.substr(first, last - first + 1));
+        };
+
+        std::string cur;
+        for (const char* p = buffer; p && *p; ++p)
+        {
+            if (*p == ',') { flush(cur); cur.clear(); }
+            else           { cur += *p; }
+        }
+        flush(cur);
+        return out;
+    }
 
     struct Entry
     {

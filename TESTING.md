@@ -74,6 +74,9 @@ vanilla types) and build the named buildings.
 | 9 | `GAAIRC` | 4 aircraft, one per pad, facing N/E/S/W, not stacked | `SeparateAircraft.Types=` + per-pad `.Facing` |
 | 10 | `GAPOWR` | those 2 Grizzlies swing their **turrets** to a right-click, hulls unmoved | `ManualFacing.Turret=` |
 | 11 | *(none)* | the starting MCV turns to face right-clicks, and still deploys | `ManualFacing=` on `[AMCV]` |
+| 12 | `GAPILE` | 2 GGIs north: one **inert even when shot**, one **walks off hunting** | `FreeUnit.Mission=` |
+| 13 | `GAWEAP` | 2 GGIs south, **neither yours** — one neutral, one hostile | `FreeUnit.Owner=` |
+| 14 | `GADEPT` | 2 GGIs east that **leave to attack** rather than guarding | `FreeUnit.Script=` |
 
 #4 and #10 share one build (moved off GAOREP, which prerequisites made unbuildable): the two Grizzlies show random spawn facing, then
 serve as the turret subjects.

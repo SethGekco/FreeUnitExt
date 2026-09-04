@@ -21,6 +21,7 @@
 #include <MapClass.h>
 #include <MissionClass.h>
 #include <ScriptTypeClass.h>
+#include <TaskForceClass.h>
 #include <TeamClass.h>
 #include <TeamTypeClass.h>
 #include <RulesClass.h>
@@ -33,6 +34,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <map>
 #include <unordered_map>
 #include <unordered_set>
 #include <string>
@@ -343,13 +345,43 @@ namespace
      * Grand_Opening on the same frame and the cache makes it happen exactly
      * once. It is NOT known to survive a save/load — see TESTING.md §5.
      */
-    TeamTypeClass* SynthesiseTeamFor(ScriptTypeClass* pScript)
+    TeamTypeClass* SynthesiseTeamFor(ScriptTypeClass* pScript, TechnoTypeClass* pType)
     {
-        static std::unordered_map<ScriptTypeClass*, TeamTypeClass*> cache;
+        static std::map<std::pair<ScriptTypeClass*, TechnoTypeClass*>,
+            TeamTypeClass*> cache;
 
-        auto const it = cache.find(pScript);
+        // A null type would just relocate the same null deref into the task
+        // force, so refuse rather than build a team that cannot survive.
+        if (!pScript || !pType)
+            return nullptr;
+
+        auto const cacheKey = std::make_pair(pScript, pType);
+
+        auto const it = cache.find(cacheKey);
         if (it != cache.end())
             return it->second;
+
+        // A REAL TaskForce, not nullptr.
+        //
+        // TaskForce=nullptr crashed at 0x6EA6B4, inside the team's
+        // member-consideration path (Phobos hooks 0x6EA6BE there): creating a
+        // team walks its TaskForce entries unconditionally, so a null one is an
+        // immediate access violation the moment CreateTeam runs. Resolving at
+        // delivery time is what makes the honest version possible — by then we
+        // know the exact TechnoType, so the task force can describe precisely
+        // the one unit we are about to hand it.
+        char tfId[0x18] = {};
+        std::snprintf(tfId, sizeof(tfId), "FUXT%.17s", pScript->ID);
+
+        auto const pTaskForce = GameCreate<TaskForceClass>(tfId);
+        if (!pTaskForce)
+            return nullptr;
+
+        pTaskForce->Group = -1;
+        pTaskForce->IsGlobal = false;
+        pTaskForce->CountEntries = 1;
+        pTaskForce->Entries[0].Amount = 1;
+        pTaskForce->Entries[0].Type = pType;
 
         // The ID only has to be unique and recognisable in a crash dump.
         char id[0x18] = {};
@@ -360,15 +392,19 @@ namespace
             return nullptr;
 
         pTeam->ScriptType = pScript;
-        pTeam->TaskForce = nullptr;   // we add the member ourselves; nothing to recruit
+        pTeam->TaskForce = pTaskForce;
+        pTeam->Group = -1;
         pTeam->Max = 1;
+        pTeam->Priority = 5;
+        pTeam->TechLevel = 0;
+        pTeam->VeteranLevel = 1;
         pTeam->Autocreate = false;    // must never be picked up by the AI's own team logic
         pTeam->Prebuild = false;
         pTeam->Reinforce = false;
         pTeam->Recruiter = false;
         pTeam->Loadable = false;
 
-        cache[pScript] = pTeam;
+        cache[cacheKey] = pTeam;
         return pTeam;
     }
 
@@ -773,7 +809,7 @@ void GameMap::AttachTeam(Delivery::Entry const& entry, FootClass* pFoot,
     {
         if (auto const pScript = ScriptTypeClass::Find(pRef->Script.c_str()))
         {
-            pTeamType = SynthesiseTeamFor(pScript);
+            pTeamType = SynthesiseTeamFor(pScript, this->TypeOf(entry));
         }
         else
         {

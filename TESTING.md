@@ -145,6 +145,9 @@ With the DLL loaded but **no** new keys in the INI, confirm unchanged behaviour:
 
 ## 5. Known untested
 
+- **Save/load with a `FreeUnit.Script=` unit.** The TeamType and TaskForce are
+  synthesised at delivery time, mid-mission. They are not part of the scenario's
+  serialised AI data, so a save taken after such a delivery may not reload.
 - **Save/load with limbo entries.** Build `GATECH` (#7), save, reload, and check
   the tech tree still reflects the limbo building. Phobos' limbo bookkeeping does
   not know about ours, so this may not survive.

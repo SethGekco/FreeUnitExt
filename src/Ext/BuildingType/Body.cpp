@@ -380,8 +380,21 @@ namespace
         pTaskForce->Group = -1;
         pTaskForce->IsGlobal = false;
         pTaskForce->CountEntries = 1;
-        pTaskForce->Entries[0].Amount = 1;
         pTaskForce->Entries[0].Type = pType;
+
+        // Amount = 0, NOT 1. This is the whole anti-recruitment measure.
+        //
+        // The team we create is owned by the DELIVERING house -- for a player
+        // building, that is the human. A TeamClass that is under strength
+        // relative to its task force recruits idle matching units from its own
+        // house, so a task force asking for "1 x GGI" turns into a magnet for
+        // the player's own barracks-built GGIs the moment our delivered member
+        // dies. Symptom: infantry the player built start wandering off on AI
+        // missions, getting worse as the game goes on. Asking for zero units
+        // means the team is at full strength from birth and never recruits;
+        // our own member still joins because AddMember is called with
+        // force=true, which bypasses the task-force match entirely.
+        pTaskForce->Entries[0].Amount = 0;
 
         // The ID only has to be unique and recognisable in a crash dump.
         char id[0x18] = {};
@@ -829,7 +842,26 @@ void GameMap::AttachTeam(Delivery::Entry const& entry, FootClass* pFoot,
     if (!pTeamType)
         return;
 
-    auto const pTeam = pTeamType->CreateTeam(pOwner);
+    auto pTeam = pTeamType->CreateTeam(pOwner);
+
+    // Fallback: if the engine refuses to create a team whose task force totals
+    // zero units, restore the one-unit request and retry. That reinstates the
+    // recruiting risk above, so it is a last resort and says so loudly -- but a
+    // script that runs with a caveat beats one that silently never runs. The
+    // probe happens once; the amount that worked is kept for the rest of the
+    // session.
+    if (!pTeam && pTeamType->TaskForce
+        && pTeamType->TaskForce->Entries[0].Amount == 0)
+    {
+        pTeamType->TaskForce->Entries[0].Amount = 1;
+        pTeam = pTeamType->CreateTeam(pOwner);
+
+        Debug::Log("[FreeUnitExt]   '%s': CreateTeam rejected a zero-strength "
+            "task force, retried with 1 (%s). This team CAN now recruit the "
+            "owner's idle units once its member dies.\n",
+            pTeamType->ID, pTeam ? "succeeded" : "still failed");
+    }
+
     if (!pTeam)
     {
         Debug::Log("[FreeUnitExt]   could not create a team from '%s'\n",
@@ -854,7 +886,13 @@ void GameMap::AttachTeam(Delivery::Entry const& entry, FootClass* pFoot,
         Debug::Log("[FreeUnitExt]   team '%s' refused the delivered unit; "
             "team disbanded so it cannot recruit other units\n",
             pTeamType->ID);
+        return;
     }
+
+    // Belt and braces alongside the zero-strength task force: say outright that
+    // the team wants nobody else. If the engine recomputes this each tick the
+    // task force is what actually holds the line; if it does not, this does.
+    pTeam->IsFullStrength = true;
 }
 
 bool GameMap::place(Delivery::Entry const& entry, Delivery::Offset offset, int facing)

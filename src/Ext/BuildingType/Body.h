@@ -17,6 +17,7 @@
 #include <BuildingTypeClass.h>
 #include <TechnoTypeClass.h>
 
+#include <string>
 #include <vector>
 
 class BuildingClass;
@@ -49,6 +50,14 @@ namespace DeliveredBuildings
     void Unmark(const void* pBuilding);
 }
 
+// What FreeUnit.Team= / FreeUnit.Script= named for one entry, kept as text
+// until delivery time. Empty strings mean "not set".
+struct TeamRef
+{
+    std::string Team;
+    std::string Script;
+};
+
 // One parsed delivery list. Entries[i].TypeIndex indexes into Types, which keeps
 // Delivery::Plan.h free of engine types while the adapter still gets a pointer.
 struct DeliveryList
@@ -56,9 +65,15 @@ struct DeliveryList
     std::vector<TechnoTypeClass*> Types;
     std::vector<Delivery::Entry>  Entries;
 
-    // Parallel to Entries via Entry::TeamIndex. Holds whatever FreeUnit.Team=
-    // named, or the TeamType synthesised for a FreeUnit.Script=.
-    std::vector<TeamTypeClass*>   Teams;
+    // Parallel to Entries via Entry::TeamIndex.
+    //
+    // Holds the NAMES, not resolved pointers. ScriptTypes and TeamTypes come
+    // from aimd.ini, which the engine reads AFTER rulesmd.ini — so at
+    // BuildingTypeClass::LoadFromINI time both arrays are still empty and any
+    // lookup returns null. Resolving here produced "unknown ScriptType" for a
+    // script that plainly existed. Names are resolved lazily at delivery, by
+    // which point Grand_Opening is running and the AI data is long loaded.
+    std::vector<TeamRef>          Teams;
 
     bool empty() const { return this->Entries.empty(); }
     void clear() { this->Types.clear(); this->Entries.clear(); this->Teams.clear(); }
@@ -184,10 +199,10 @@ public:
     int  randomRanged(int low, int high) override;
 
 private:
-    TeamTypeClass* TeamOf(Delivery::Entry const& entry) const
+    TeamRef const* TeamOf(Delivery::Entry const& entry) const
     {
         return entry.TeamIndex >= 0 && std::size_t(entry.TeamIndex) < this->List.Teams.size()
-            ? this->List.Teams[std::size_t(entry.TeamIndex)]
+            ? &this->List.Teams[std::size_t(entry.TeamIndex)]
             : nullptr;
     }
 

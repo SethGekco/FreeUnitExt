@@ -337,6 +337,11 @@ namespace
      * ScriptTypeClass::Find, NOT FindOrAllocate: FindOrAllocate would silently
      * manufacture an empty script for a typo, which then does nothing forever.
      * A miss should be a log line, not a phantom script.
+     *
+     * Called at DELIVERY time (see AttachTeam), so this allocates a TeamType
+     * mid-game. That is sync-safe because every client runs the same building's
+     * Grand_Opening on the same frame and the cache makes it happen exactly
+     * once. It is NOT known to survive a save/load — see TESTING.md §5.
      */
     TeamTypeClass* SynthesiseTeamFor(ScriptTypeClass* pScript)
     {
@@ -454,43 +459,32 @@ namespace
                 return src < list.size() ? list[src].c_str() : nullptr;
             };
 
-            TeamTypeClass* pTeam = nullptr;
+            // NOTE: the names are STORED, not resolved. ScriptTypes and
+            // TeamTypes live in aimd.ini, which the engine reads after
+            // rulesmd.ini — at this point both arrays are still empty, so
+            // resolving here reported "unknown ScriptType" for scripts that
+            // plainly existed. Resolution happens at delivery time instead.
+            TeamRef ref;
 
             if (auto const teamId = pick(teamIds))
-            {
-                pTeam = TeamTypeClass::Find(teamId);
-                if (!pTeam)
-                {
-                    Debug::Log("[FreeUnitExt] [%s]%s.Team: unknown TeamType '%s'\n",
-                        section, prefix, teamId);
-                }
-            }
+                ref.Team = teamId;
 
-            if (!pTeam)
-            {
-                if (auto const scriptId = pick(scriptIds))
-                {
-                    if (auto const pScript = ScriptTypeClass::Find(scriptId))
-                    {
-                        pTeam = SynthesiseTeamFor(pScript);
-                    }
-                    else
-                    {
-                        Debug::Log("[FreeUnitExt] [%s]%s.Script: unknown ScriptType "
-                            "'%s'\n", section, prefix, scriptId);
-                    }
-                }
-            }
-            else if (!scriptIds.empty())
+            if (auto const scriptId = pick(scriptIds))
+                ref.Script = scriptId;
+
+            // Team wins over Script; a TeamType already carries a script, so
+            // honouring both would silently discard one.
+            if (!ref.Team.empty() && !ref.Script.empty())
             {
                 Debug::Log("[FreeUnitExt] [%s]%s: both .Team and .Script are set; "
                     "the team wins (it already carries a script)\n", section, prefix);
+                ref.Script.clear();
             }
 
-            if (pTeam)
+            if (!ref.Team.empty() || !ref.Script.empty())
             {
                 entry.TeamIndex = int(out.Teams.size());
-                out.Teams.push_back(pTeam);
+                out.Teams.push_back(ref);
             }
 
             if (entry.What == Delivery::Kind::Limbo
@@ -757,8 +751,38 @@ HouseClass* GameMap::ResolveOwner(Delivery::OwnerKind kind) const
 void GameMap::AttachTeam(Delivery::Entry const& entry, FootClass* pFoot,
     HouseClass* pOwner) const
 {
-    auto const pTeamType = this->TeamOf(entry);
-    if (!pTeamType || !pFoot || !pOwner)
+    auto const pRef = this->TeamOf(entry);
+    if (!pRef || !pFoot || !pOwner)
+        return;
+
+    // Resolve HERE, not at parse time. See DeliveryList::Teams: aimd.ini has
+    // definitely loaded by the time a building finishes, so this is the first
+    // moment either lookup can succeed.
+    TeamTypeClass* pTeamType = nullptr;
+
+    if (!pRef->Team.empty())
+    {
+        pTeamType = TeamTypeClass::Find(pRef->Team.c_str());
+        if (!pTeamType)
+        {
+            Debug::Log("[FreeUnitExt]   unknown TeamType '%s'\n",
+                pRef->Team.c_str());
+        }
+    }
+    else if (!pRef->Script.empty())
+    {
+        if (auto const pScript = ScriptTypeClass::Find(pRef->Script.c_str()))
+        {
+            pTeamType = SynthesiseTeamFor(pScript);
+        }
+        else
+        {
+            Debug::Log("[FreeUnitExt]   unknown ScriptType '%s' (%d script(s) "
+                "loaded)\n", pRef->Script.c_str(), ScriptTypeClass::Array.Count);
+        }
+    }
+
+    if (!pTeamType)
         return;
 
     auto const pTeam = pTeamType->CreateTeam(pOwner);

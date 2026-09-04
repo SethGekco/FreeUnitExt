@@ -394,7 +394,15 @@ namespace
         pTeam->ScriptType = pScript;
         pTeam->TaskForce = pTaskForce;
         pTeam->Group = -1;
-        pTeam->Max = 1;
+
+        // Max is the number of TEAMS of this type allowed to exist at once, NOT
+        // the number of members (members come from the TaskForce Amount above).
+        // Max=1 meant the FIRST delivered unit got a team and every later one
+        // was refused by CreateTeam -- two GGIs were delivered, one attacked.
+        // One team is created per script-carrying unit, and this TeamType is
+        // reused for the whole game, so the cap has to cover every such unit
+        // alive at once.
+        pTeam->Max = 1000;
         pTeam->Priority = 5;
         pTeam->TechLevel = 0;
         pTeam->VeteranLevel = 1;
@@ -831,7 +839,20 @@ void GameMap::AttachTeam(Delivery::Entry const& entry, FootClass* pFoot,
 
     if (!pTeam->AddMember(pFoot, true))
     {
-        Debug::Log("[FreeUnitExt]   team '%s' refused the delivered unit\n",
+        // Do NOT leave the empty team running. Its TaskForce asks for one unit
+        // of this exact type, and a team that is short of its task force goes
+        // RECRUITING for matching units on the map -- which for a delivered GI
+        // means conscripting the player's own barracks-built GIs into an AI
+        // script. Mark it to disappear so a failed attach costs one unit's
+        // script rather than quietly hijacking unrelated infantry.
+        //
+        // UNVERIFIED: AddMember has never actually failed in testing, so this
+        // path has not been exercised in game. It is a cheap safety net, not a
+        // proven fix.
+        pTeam->NeedsToDisappear = true;
+
+        Debug::Log("[FreeUnitExt]   team '%s' refused the delivered unit; "
+            "team disbanded so it cannot recruit other units\n",
             pTeamType->ID);
     }
 }

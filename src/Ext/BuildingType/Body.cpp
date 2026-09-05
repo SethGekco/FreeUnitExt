@@ -836,12 +836,12 @@ HouseClass* GameMap::ResolveOwner(Delivery::OwnerKind kind) const
  * or leaking it would be worse, and a modder chasing "my script did not run"
  * is far better served by a log line than by a missing unit.
  */
-void GameMap::AttachTeam(Delivery::Entry const& entry, FootClass* pFoot,
+bool GameMap::AttachTeam(Delivery::Entry const& entry, FootClass* pFoot,
     HouseClass* pOwner) const
 {
     auto const pRef = this->TeamOf(entry);
     if (!pRef || !pFoot || !pOwner)
-        return;
+        return false;
 
     // Resolve HERE, not at parse time. See DeliveryList::Teams: aimd.ini has
     // definitely loaded by the time a building finishes, so this is the first
@@ -873,7 +873,7 @@ void GameMap::AttachTeam(Delivery::Entry const& entry, FootClass* pFoot,
     }
 
     if (!pTeamType)
-        return;
+        return false;
 
     auto const pTeam = pTeamType->CreateTeam(pOwner);
 
@@ -881,7 +881,7 @@ void GameMap::AttachTeam(Delivery::Entry const& entry, FootClass* pFoot,
     {
         Debug::Log("[FreeUnitExt]   could not create a team from '%s'\n",
             pTeamType->ID);
-        return;
+        return false;
     }
 
     if (!pTeam->AddMember(pFoot, true))
@@ -901,7 +901,7 @@ void GameMap::AttachTeam(Delivery::Entry const& entry, FootClass* pFoot,
         Debug::Log("[FreeUnitExt]   team '%s' refused the delivered unit; "
             "team disbanded so it cannot recruit other units\n",
             pTeamType->ID);
-        return;
+        return false;
     }
 
     // Remember the pairing so the team dies with its member. The team is
@@ -912,6 +912,8 @@ void GameMap::AttachTeam(Delivery::Entry const& entry, FootClass* pFoot,
     // whatever recruiting behaviour they wrote into it.
     if (synthesised)
         ScriptedTeams::Register(pFoot, pTeam);
+
+    return true;
 }
 
 bool GameMap::place(Delivery::Entry const& entry, Delivery::Offset offset, int facing)
@@ -988,23 +990,33 @@ bool GameMap::place(Delivery::Entry const& entry, Delivery::Offset offset, int f
     // with no way to stop it short of not using this DLL.
     if (auto const pFoot = abstract_cast<FootClass*>(pObject))
     {
-        const bool harvester = pType->WhatAmI() == AbstractType::UnitType
-            && static_cast<UnitTypeClass*>(pType)->Harvester;
+        // Team FIRST, and a unit under team control gets no mission from us.
+        //
+        // QueueMission used to run BEFORE this, on the theory that the mission
+        // was merely a fallback the team would override. It is the other way
+        // round: with rush=false the queued mission is applied on the next
+        // mission update, which is AFTER the team assignment, so the unit
+        // settled into Area_Guard and ignored the script it had just been
+        // handed. The symptom was teams that visibly started -- each picked a
+        // GatherAtEnemy cell in the log -- while every unit stood still.
+        //
+        // FreeUnit.Script= is specified to override FreeUnit.Mission=, so
+        // giving the team the unit outright is also what the docs promise.
+        if (!this->AttachTeam(entry, pFoot, pOwner))
+        {
+            const bool harvester = pType->WhatAmI() == AbstractType::UnitType
+                && static_cast<UnitTypeClass*>(pType)->Harvester;
 
-        // An explicit FreeUnit.Mission= wins outright. It is the modder saying
-        // what this unit is for, which beats any default we could infer.
-        const auto mission = entry.Mission != Delivery::Mission_Unset
-            ? static_cast<Mission>(entry.Mission)
-            : (harvester
-                ? Mission::Harvest
-                : (pType->DefaultToGuardArea ? Mission::Area_Guard : Mission::Guard));
+            // An explicit FreeUnit.Mission= wins outright. It is the modder
+            // saying what this unit is for, which beats any default we infer.
+            const auto mission = entry.Mission != Delivery::Mission_Unset
+                ? static_cast<Mission>(entry.Mission)
+                : (harvester
+                    ? Mission::Harvest
+                    : (pType->DefaultToGuardArea ? Mission::Area_Guard : Mission::Guard));
 
-        pFoot->QueueMission(mission, false);
-
-        // After the mission, not before: the team's script takes the unit over
-        // from here, and the queued mission is only what it falls back to if
-        // the team is ever disbanded.
-        this->AttachTeam(entry, pFoot, pOwner);
+            pFoot->QueueMission(mission, false);
+        }
     }
 
     return true;

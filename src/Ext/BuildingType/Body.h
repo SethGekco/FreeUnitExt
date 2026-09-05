@@ -204,8 +204,10 @@ public:
     HouseClass* ResolveOwner(Delivery::OwnerKind kind) const;
 
     // Put a delivered unit on a team so its script runs. No-op when the entry
-    // has no team. Failure is non-fatal: the unit keeps its mission.
-    void AttachTeam(Delivery::Entry const& entry, FootClass* pFoot,
+    // has no team. Returns whether the unit is now under team control, which
+    // decides whether place() gives it a mission of its own at all. Failure is
+    // non-fatal: the caller falls back to the normal mission.
+    bool AttachTeam(Delivery::Entry const& entry, FootClass* pFoot,
         HouseClass* pOwner) const;
 
     bool canPlace(Delivery::Entry const& entry, Delivery::Offset offset) const override;

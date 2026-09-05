@@ -50,6 +50,21 @@ namespace DeliveredBuildings
     void Unmark(const void* pBuilding);
 }
 
+class TeamClass;
+
+// Delivered units that carry a SYNTHESISED team (FreeUnit.Script=), so the team
+// can be disbanded when its only member dies. Left running, that team is one
+// short of its task force and recruits the owning house's idle units -- which
+// for a player-built structure means conscripting the human's own infantry.
+namespace ScriptedTeams
+{
+    void Register(FootClass* pFoot, TeamClass* pTeam);
+
+    // Called from the techno dtor hook for EVERY techno; a pointer that was
+    // never registered is a harmless miss.
+    void Retire(const void* pTechno);
+}
+
 // What FreeUnit.Team= / FreeUnit.Script= named for one entry, kept as text
 // until delivery time. Empty strings mean "not set".
 struct TeamRef

@@ -360,5 +360,10 @@ DEFINE_HOOK(0x6F4500, FreeUnitExt_TechnoClass_DTOR_Unmark, 0x5)
 {
     GET(void*, pThis, ECX);
     DeliveredBuildings::Unmark(pThis);
+
+    // Same hook, same reasoning: a delivered unit carrying a synthesised script
+    // team must take that team with it, or the team recruits a replacement from
+    // the owning house -- the human player, for a player-built structure.
+    ScriptedTeams::Retire(pThis);
     return 0;
 }

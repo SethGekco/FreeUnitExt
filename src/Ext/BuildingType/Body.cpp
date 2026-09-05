@@ -67,6 +67,40 @@ namespace DeliveredBuildings
 // =============================================================================
 // Parsing helpers
 // =============================================================================
+namespace ScriptedTeams
+{
+    namespace
+    {
+        // Foot -> the synthesised team created solely to carry its script.
+        std::unordered_map<const void*, TeamClass*> teams;
+    }
+
+    void Register(FootClass* pFoot, TeamClass* pTeam)
+    {
+        teams[pFoot] = pTeam;
+    }
+
+    void Retire(const void* pTechno)
+    {
+        auto const it = teams.find(pTechno);
+        if (it == teams.end())
+            return;
+
+        auto const pTeam = it->second;
+        teams.erase(it);
+
+        // VALIDATE before touching it. The team may already be gone, and its
+        // address may since have been reused -- writing NeedsToDisappear into a
+        // recycled allocation would corrupt something unrelated. TeamClass
+        // keeps a global array, so membership is a cheap liveness test that
+        // never dereferences a dead pointer.
+        if (TeamClass::Array.FindItemIndex(pTeam) == -1)
+            return;
+
+        pTeam->NeedsToDisappear = true;
+    }
+}
+
 namespace
 {
     /*
@@ -382,19 +416,16 @@ namespace
         pTaskForce->CountEntries = 1;
         pTaskForce->Entries[0].Type = pType;
 
-        // Amount = 0, NOT 1. This is the whole anti-recruitment measure.
+        // Amount = 1, not 0.
         //
-        // The team we create is owned by the DELIVERING house -- for a player
-        // building, that is the human. A TeamClass that is under strength
-        // relative to its task force recruits idle matching units from its own
-        // house, so a task force asking for "1 x GGI" turns into a magnet for
-        // the player's own barracks-built GGIs the moment our delivered member
-        // dies. Symptom: infantry the player built start wandering off on AI
-        // missions, getting worse as the game goes on. Asking for zero units
-        // means the team is at full strength from birth and never recruits;
-        // our own member still joins because AddMember is called with
-        // force=true, which bypasses the task-force match entirely.
-        pTaskForce->Entries[0].Amount = 0;
+        // Zero was tried, to stop the team ever being under strength and thus
+        // ever recruiting. It does prevent recruitment -- and it also stops the
+        // script from ever running: four teams were created, AddMember
+        // succeeded on all of them, and not one produced a GatherAtEnemy. A
+        // team with nothing to field never starts its script. The recruitment
+        // problem is therefore solved at the other end, by not letting the team
+        // outlive its member (see ScriptedTeams below).
+        pTaskForce->Entries[0].Amount = 1;
 
         // The ID only has to be unique and recognisable in a crash dump.
         char id[0x18] = {};
@@ -816,6 +847,7 @@ void GameMap::AttachTeam(Delivery::Entry const& entry, FootClass* pFoot,
     // definitely loaded by the time a building finishes, so this is the first
     // moment either lookup can succeed.
     TeamTypeClass* pTeamType = nullptr;
+    bool synthesised = false;
 
     if (!pRef->Team.empty())
     {
@@ -831,6 +863,7 @@ void GameMap::AttachTeam(Delivery::Entry const& entry, FootClass* pFoot,
         if (auto const pScript = ScriptTypeClass::Find(pRef->Script.c_str()))
         {
             pTeamType = SynthesiseTeamFor(pScript, this->TypeOf(entry));
+            synthesised = pTeamType != nullptr;
         }
         else
         {
@@ -842,25 +875,7 @@ void GameMap::AttachTeam(Delivery::Entry const& entry, FootClass* pFoot,
     if (!pTeamType)
         return;
 
-    auto pTeam = pTeamType->CreateTeam(pOwner);
-
-    // Fallback: if the engine refuses to create a team whose task force totals
-    // zero units, restore the one-unit request and retry. That reinstates the
-    // recruiting risk above, so it is a last resort and says so loudly -- but a
-    // script that runs with a caveat beats one that silently never runs. The
-    // probe happens once; the amount that worked is kept for the rest of the
-    // session.
-    if (!pTeam && pTeamType->TaskForce
-        && pTeamType->TaskForce->Entries[0].Amount == 0)
-    {
-        pTeamType->TaskForce->Entries[0].Amount = 1;
-        pTeam = pTeamType->CreateTeam(pOwner);
-
-        Debug::Log("[FreeUnitExt]   '%s': CreateTeam rejected a zero-strength "
-            "task force, retried with 1 (%s). This team CAN now recruit the "
-            "owner's idle units once its member dies.\n",
-            pTeamType->ID, pTeam ? "succeeded" : "still failed");
-    }
+    auto const pTeam = pTeamType->CreateTeam(pOwner);
 
     if (!pTeam)
     {
@@ -889,10 +904,14 @@ void GameMap::AttachTeam(Delivery::Entry const& entry, FootClass* pFoot,
         return;
     }
 
-    // Belt and braces alongside the zero-strength task force: say outright that
-    // the team wants nobody else. If the engine recomputes this each tick the
-    // task force is what actually holds the line; if it does not, this does.
-    pTeam->IsFullStrength = true;
+    // Remember the pairing so the team dies with its member. The team is
+    // owned by the delivering house -- the human, for a player-built structure
+    // -- and once this unit dies the team is one short of its task force and
+    // starts recruiting the player's own infantry into an AI script. Only
+    // synthesised teams are tracked: a modder-authored FreeUnit.Team= keeps
+    // whatever recruiting behaviour they wrote into it.
+    if (synthesised)
+        ScriptedTeams::Register(pFoot, pTeam);
 }
 
 bool GameMap::place(Delivery::Entry const& entry, Delivery::Offset offset, int facing)

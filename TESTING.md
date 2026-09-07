@@ -76,7 +76,7 @@ vanilla types) and build the named buildings.
 | 11 | *(none)* | the starting MCV turns to face right-clicks, and still deploys | `ManualFacing=` on `[AMCV]` |
 | 12 | `GAPILE` | 2 GGIs north: one **inert even when shot**, one **walks off hunting** | `FreeUnit.Mission=` |
 | 13 | `GAWEAP` | 2 GGIs south, **neither yours** — one neutral, one hostile | `FreeUnit.Owner=` |
-| 14 | `GADEPT` | 2 GGIs east that **leave to attack** rather than guarding | `FreeUnit.Script=` |
+| 14 | `GADEPT` | 2 GGIs east that **leave your base** and attack | `FreeUnit.Script=` |
 
 #4 and #10 share one build (moved off GAOREP, which prerequisites made unbuildable): the two Grizzlies show random spawn facing, then
 serve as the turret subjects.
@@ -105,6 +105,15 @@ works while only ever firing for AI houses. Watching an AI base is not a test.
 **#9** is the one most likely to fail. It depends on `DockingOffsets` actually
 being populated; if all four aircraft stack on the building's centre, the vector
 was empty and the fallback kicked in.
+
+**#14: Area Guard masquerades as script obedience.** Infantry on `Area_Guard`
+chase nearby enemies, which from outside looks exactly like a unit following an
+attack script. A scripted unit that was in fact pinned in Area Guard read as a
+pass. The distinguishing question is whether the units **leave the base and
+cross the map**, or engage something close and settle back. Confirm from the
+log, not from movement: the engine prints
+`A <team> Team has chosen (x, y) for its GatherAtEnemy cell.` when the script
+actually starts.
 
 **#7** proves nothing on its own — check the tech tree, not the screen. Build
 `GATECH`, then confirm the Barracks-gated units are buildable *without* a visible
@@ -145,6 +154,10 @@ With the DLL loaded but **no** new keys in the INI, confirm unchanged behaviour:
 
 ## 5. Known untested
 
+- **A `FreeUnit.Script=` unit dying, then its team.** The team is disbanded
+  from the techno dtor hook so it cannot recruit the owner's idle units; the
+  recruit-a-replacement behaviour is fixed but the disband path itself has not
+  been watched in game.
 - **Save/load with a `FreeUnit.Script=` unit.** The TeamType and TaskForce are
   synthesised at delivery time, mid-mission. They are not part of the scenario's
   serialised AI data, so a save taken after such a delivery may not reload.

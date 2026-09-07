@@ -20,6 +20,8 @@
 #include <InfantryTypeClass.h>
 #include <MapClass.h>
 #include <MissionClass.h>
+#include <AnimClass.h>
+#include <AnimTypeClass.h>
 #include <ScriptTypeClass.h>
 #include <TaskForceClass.h>
 #include <TeamClass.h>
@@ -361,6 +363,50 @@ namespace
         return out;
     }
 
+    // AnimTypes are their own array; there is no shared "find any type" here
+    // because an animation is not a TechnoType and must not be looked up as one.
+    AnimTypeClass* FindAnimType(const char* id)
+    {
+        return id && *id ? AnimTypeClass::Find(id) : nullptr;
+    }
+
+    // One AnimType per slot, broadcasting a single value like the other
+    // parallel keys. A name that resolves to nothing is logged and left null,
+    // which simply means "no animation for this entry".
+    std::vector<AnimTypeClass*> ReadAnims(CCINIClass* pINI, const char* section,
+        const char* key, size_t count)
+    {
+        std::vector<AnimTypeClass*> out(count, nullptr);
+
+        auto const tokens = ReadList(pINI, section, key);
+        if (tokens.empty())
+            return out;
+
+        auto resolve = [&](std::string const& id) -> AnimTypeClass*
+        {
+            auto const pAnim = FindAnimType(id.c_str());
+            if (!pAnim)
+            {
+                Debug::Log("[FreeUnitExt] [%s]%s: unknown AnimType '%s'\n",
+                    section, key, id.c_str());
+            }
+            return pAnim;
+        };
+
+        if (tokens.size() == 1)
+        {
+            auto const pAnim = resolve(tokens[0]);
+            for (auto& slot : out)
+                slot = pAnim;
+            return out;
+        }
+
+        for (size_t i = 0; i < tokens.size() && i < count; ++i)
+            out[i] = resolve(tokens[i]);
+
+        return out;
+    }
+
     /*
      * Resolve FreeUnit.Team= / FreeUnit.Script= to a TeamTypeClass.
      *
@@ -517,6 +563,7 @@ namespace
         auto const limbos   = ReadBools(pINI, section, key(".Limbo").c_str(), ids.size());
         auto const missions = ReadMissions(pINI, section, key(".Mission").c_str(), ids.size());
         auto const owners   = ReadOwners(pINI, section, key(".Owner").c_str(), ids.size());
+        auto const anims     = ReadAnims(pINI, section, key(".Anim").c_str(), ids.size());
         auto const teamIds   = ReadList(pINI, section, key(".Team").c_str());
         auto const scriptIds = ReadList(pINI, section, key(".Script").c_str());
 
@@ -533,6 +580,14 @@ namespace
             entry.Range = ranges[src] < 1 ? 1 : ranges[src];
             entry.Mission = missions[src];
             entry.Owner = owners[src];
+
+            // The spawn effect is optional decoration on a normal delivery, so
+            // an unknown name costs the animation and not the unit.
+            if (anims[src])
+            {
+                entry.AnimIndex = int(out.Anims.size());
+                out.Anims.push_back(anims[src]);
+            }
 
             // Team wins over Script when both name something for the same entry:
             // a TeamType already carries a script, so honouring both would mean
@@ -595,6 +650,75 @@ namespace
 // =============================================================================
 // INI
 // =============================================================================
+namespace
+{
+    /*
+     * Parse FreeUnit.Anims= — animations delivered in their own right.
+     *
+     * Deliberately NOT routed through ParseDeliveryList: these entries have no
+     * TechnoType at all, so every type-resolution step there would have to be
+     * made conditional to no benefit. They share the geometry keys instead.
+     */
+    void ParseAnimationList(DeliveryList& out, CCINIClass* pINI, const char* section)
+    {
+        const char* typeKey = "FreeUnit.Anims";
+
+        auto const ids = ReadList(pINI, section, typeKey);
+        if (ids.empty())
+            return;
+
+        out.clear();
+
+        std::vector<AnimTypeClass*> anims;
+        std::vector<size_t> sourceIndex;
+        for (size_t i = 0; i < ids.size(); ++i)
+        {
+            if (auto const pAnim = FindAnimType(ids[i].c_str()))
+            {
+                anims.push_back(pAnim);
+                sourceIndex.push_back(i);
+            }
+            else
+            {
+                Debug::Log("[FreeUnitExt] [%s]%s: unknown AnimType '%s' — skipped\n",
+                    section, typeKey, ids[i].c_str());
+            }
+        }
+
+        if (anims.empty())
+            return;
+
+        auto const cells    = ReadDirections(pINI, section, "FreeUnit.Anims.Cell", ids.size());
+        auto const spacings = ReadInts(pINI, section, "FreeUnit.Anims.Spacing", ids.size(), 0);
+        auto const owners   = ReadOwners(pINI, section, "FreeUnit.Anims.Owner", ids.size());
+
+        // Default NO. The cell a building decoration wants is usually the
+        // parent's own, which can never be clear, so defaulting to yes would
+        // make the common decorative case silently place nothing. Modders using
+        // an AnimType with MakeInfantry=/Spawns= must opt in, and the INI
+        // reference says so.
+        auto const clears = ReadBools(pINI, section, "FreeUnit.Anims.RequireClear", ids.size());
+
+        for (size_t i = 0; i < anims.size(); ++i)
+        {
+            const size_t src = sourceIndex[i];
+
+            Delivery::Entry entry;
+            entry.What = Delivery::Kind::Animation;
+            entry.TypeIndex = -1;          // an animation is not a TechnoType
+            entry.AnimIndex = int(i);
+            entry.Cell = cells[src];
+            entry.Spacing = spacings[src] < 0 ? 0 : spacings[src];
+            entry.Owner = owners[src];
+            entry.RequireClear = clears[src];
+
+            out.Entries.push_back(entry);
+        }
+
+        out.Anims = anims;
+    }
+}
+
 void BuildingTypeExt::LoadFromINI(BuildingTypeClass* pThis, CCINIClass* pINI)
 {
     if (!pThis || !pINI)
@@ -632,6 +756,8 @@ void BuildingTypeExt::LoadFromINI(BuildingTypeClass* pThis, CCINIClass* pINI)
 
     data.OnlyBuilt = pINI->ReadBool(section, "FreeUnit.OnlyBuilt", data.OnlyBuilt);
 
+    ParseAnimationList(data.Animations, pINI, section);
+
     ParseDeliveryList(data.PadAircraft, pINI, section,
         "SeparateAircraft.Types", "SeparateAircraft");
 
@@ -666,11 +792,12 @@ void BuildingTypeExt::LoadFromINI(BuildingTypeClass* pThis, CCINIClass* pINI)
         // every hook falls through to vanilla and the DLL looks inert with no
         // error anywhere. One line per configured building makes that visible.
         Debug::Log("[FreeUnitExt] parsed [%s]: %u free unit(s), %u neighbour(s), "
-            "%u pad aircraft, SeparateAircraft%s\n",
+            "%u pad aircraft, %u animation(s), SeparateAircraft%s\n",
             section,
             unsigned(data.FreeUnits.Entries.size()),
             unsigned(data.Neighbours.Entries.size()),
             unsigned(data.PadAircraft.Entries.size()),
+            unsigned(data.Animations.Entries.size()),
             data.SeparateAircraft_Set ? (data.SeparateAircraft ? "=yes" : "=no") : " unset");
     }
 
@@ -719,10 +846,6 @@ namespace
 
 bool GameMap::canPlace(Delivery::Entry const& entry, Delivery::Offset offset) const
 {
-    auto const pType = this->TypeOf(entry);
-    if (!pType)
-        return false;
-
     CellStruct target = ParentCell(this->Parent);
     target.X = short(target.X + offset.X);
     target.Y = short(target.Y + offset.Y);
@@ -730,6 +853,26 @@ bool GameMap::canPlace(Delivery::Entry const& entry, Delivery::Offset offset) co
     auto const pCell = MapClass::Instance.TryGetCellAt(target);
     if (!pCell)
         return false;   // off-map
+
+    if (entry.What == Delivery::Kind::Animation)
+    {
+        // Only reached when RequireClear=yes; the planner skips this call
+        // entirely for decoration. The caller is an AnimType with MakeInfantry=
+        // or Spawns=, so the clearance that matters is the one its offspring
+        // needs, and infantry is both the likelier and the stricter case.
+        return pCell->IsClearToMove(
+            SpeedType::Foot,
+            /*ignoreInfantry=*/false,
+            /*ignoreVehicles=*/false,
+            /*zone=*/-1,
+            MovementZone::Infantry,
+            /*level=*/-1,
+            /*isBridge=*/false);
+    }
+
+    auto const pType = this->TypeOf(entry);
+    if (!pType)
+        return false;
 
     if (entry.What == Delivery::Kind::Building)
     {
@@ -916,17 +1059,47 @@ bool GameMap::AttachTeam(Delivery::Entry const& entry, FootClass* pFoot,
     return true;
 }
 
+// Play an entry's spawn effect at a cell. Failure is silent on purpose: this is
+// cosmetic, and a missing puff of smoke must never cost the delivery.
+void GameMap::PlayAnim(Delivery::Entry const& entry, CellStruct const& cell,
+    HouseClass* pOwner) const
+{
+    auto const pAnimType = this->AnimOf(entry);
+    if (!pAnimType)
+        return;
+
+    const auto coords = CellClass::Cell2Coord(cell);
+
+    if (auto const pAnim = GameCreate<AnimClass>(pAnimType, coords))
+    {
+        // Owner drives house remap AND is what an AnimType with MakeInfantry=
+        // hands its new infantry to. Without it the spawned unit would not
+        // belong to the house that earned it.
+        pAnim->Owner = pOwner;
+    }
+}
+
 bool GameMap::place(Delivery::Entry const& entry, Delivery::Offset offset, int facing)
 {
-    auto const pType = this->TypeOf(entry);
-    if (!pType)
-        return false;
-
     auto const pOwner = this->ResolveOwner(entry.Owner);
 
     CellStruct target = ParentCell(this->Parent);
     target.X = short(target.X + offset.X);
     target.Y = short(target.Y + offset.Y);
+
+    // A standalone animation IS the delivery -- there is no object to create,
+    // unlimbo or give a mission to. Anything it spawns is the AnimType's own
+    // doing (MakeInfantry=, Spawns=), which is exactly the point: that is how a
+    // free unit arrives out of an animation instead of out of nothing.
+    if (entry.What == Delivery::Kind::Animation)
+    {
+        this->PlayAnim(entry, target, pOwner);
+        return true;
+    }
+
+    auto const pType = this->TypeOf(entry);
+    if (!pType)
+        return false;
 
     // No ScenarioInit bracket anywhere in the foot path: vanilla's free-unit
     // block (0x446AA9-0x446EE1) touches the flag exactly zero times. Only the
@@ -976,7 +1149,11 @@ bool GameMap::place(Delivery::Entry const& entry, Delivery::Offset offset, int f
         return false;
     }
 
-
+    // Spawn effect, AFTER the object is confirmed on the map. Playing it before
+    // Unlimbo would leave an animation marking a cell that then refused the
+    // unit -- an effect with nothing to show for it, on a delivery the planner
+    // is about to retry somewhere else.
+    this->PlayAnim(entry, target, pOwner);
 
     // A free unit with nothing to do should guard its birthplace. Harvesters
     // are the one type with a better default — the same distinction Antares

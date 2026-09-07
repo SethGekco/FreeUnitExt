@@ -424,6 +424,89 @@ static void test_failureIsIsolated()
     check(result.Delivered == 1, "the limbo entry after it still went through");
 }
 
+static void test_decorativeAnimIgnoresBlockedCells()
+{
+    std::printf("resolve — a decorative animation plays on cells nothing could occupy\n");
+
+    // The cell a building decoration most wants is the building's own, which
+    // can never pass a clear-cell test. RequireClear=no must therefore bypass
+    // canPlace entirely rather than search outward for somewhere free.
+    class BlockedMap final : public FakeMap
+    {
+    public:
+        bool canPlace(Delivery::Entry const&, Delivery::Offset) const override
+        {
+            return false;
+        }
+    };
+
+    BlockedMap map;
+
+    Delivery::Entry anim;
+    anim.What = Delivery::Kind::Animation;
+    anim.AnimIndex = 0;
+    anim.Cell = Delivery::Dir_N;
+    anim.RequireClear = false;
+
+    auto result = Delivery::resolve({ anim }, map, Delivery::Dir_N);
+    check(result.Delivered == 1, "decoration was delivered onto a blocked cell");
+    check(map.Log.size() == 1 && map.Log[0].Where == Delivery::Offset { 0, -1 },
+        "and landed on the FIRST candidate rather than searching past it");
+}
+
+static void test_spawningAnimStillNeedsAClearCell()
+{
+    std::printf("resolve — an animation that spawns a unit still requires a free cell\n");
+
+    // The opposite half of the same switch: MakeInfantry= has nowhere to put
+    // its infantry if the anim plays inside the building, so RequireClear=yes
+    // must go back to honouring canPlace.
+    class BlockedMap final : public FakeMap
+    {
+    public:
+        bool canPlace(Delivery::Entry const&, Delivery::Offset) const override
+        {
+            return false;
+        }
+    };
+
+    BlockedMap map;
+
+    Delivery::Entry anim;
+    anim.What = Delivery::Kind::Animation;
+    anim.AnimIndex = 0;
+    anim.Cell = Delivery::Dir_N;
+    anim.RequireClear = true;
+
+    auto result = Delivery::resolve({ anim }, map, Delivery::Dir_N);
+    check(result.Failed == 1, "a spawning animation with nowhere free is reported failed");
+    check(map.Log.empty(), "and nothing was placed");
+}
+
+static void test_animEntryNeedsNoTechnoType()
+{
+    std::printf("resolve — an animation entry is deliverable without a TypeIndex\n");
+
+    // Pure animations carry AnimIndex and no TypeIndex. The old guard dropped
+    // any entry with TypeIndex < 0, which would have skipped every one of them.
+    FakeMap map;
+
+    Delivery::Entry anim;
+    anim.What = Delivery::Kind::Animation;
+    anim.TypeIndex = -1;
+    anim.AnimIndex = 3;
+
+    auto result = Delivery::resolve({ anim }, map, Delivery::Dir_N);
+    check(result.Delivered == 1, "entry was not skipped for lacking a techno type");
+
+    // ...while an entry carrying neither is still nothing at all.
+    Delivery::Entry empty;
+    empty.TypeIndex = -1;
+    empty.AnimIndex = -1;
+    auto none = Delivery::resolve({ empty }, map, Delivery::Dir_N);
+    check(none.Delivered == 0 && none.Failed == 0, "an entry with neither is skipped");
+}
+
 static void test_placeFailureTriesNextCell()
 {
     std::printf("resolve — a cell that passes canPlace but fails place is not fatal\n");
@@ -514,6 +597,9 @@ int main()
     test_failureIsIsolated();
     test_placeFailureTriesNextCell();
     test_parentRadiusClearsFootprint();
+    test_decorativeAnimIgnoresBlockedCells();
+    test_spawningAnimStillNeedsAClearCell();
+    test_animEntryNeedsNoTechnoType();
 
     if (g_failures)
     {

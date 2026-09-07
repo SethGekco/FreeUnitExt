@@ -23,6 +23,7 @@
 class BuildingClass;
 class CCINIClass;
 class HouseClass;
+class AnimTypeClass;
 class TeamTypeClass;
 class FootClass;
 
@@ -90,8 +91,19 @@ struct DeliveryList
     // which point Grand_Opening is running and the AI data is long loaded.
     std::vector<TeamRef>          Teams;
 
+    // Parallel to Entries via Entry::AnimIndex. Holds both the standalone
+    // animations (Kind::Animation entries) and the per-unit spawn effects,
+    // since an index space is all either one needs.
+    std::vector<AnimTypeClass*>   Anims;
+
     bool empty() const { return this->Entries.empty(); }
-    void clear() { this->Types.clear(); this->Entries.clear(); this->Teams.clear(); }
+    void clear()
+    {
+        this->Types.clear();
+        this->Entries.clear();
+        this->Teams.clear();
+        this->Anims.clear();
+    }
 };
 
 struct BuildingTypeData
@@ -105,6 +117,12 @@ struct BuildingTypeData
     DeliveryList Neighbours;
 
     DeliveryList PadAircraft;
+
+    // FreeUnit.Anims= — animations delivered in their own right, whether as
+    // building decoration or as MakeInfantry=/Spawns= unit spawners. Kept in
+    // its own list for the same reason as Neighbours: an INI pass that sets
+    // only this key must not re-append on every later pass.
+    DeliveryList Animations;
 
     // Per-building override of [General]SeparateAircraft. Unset means "use the
     // global", which is what every unmodified building does.
@@ -123,7 +141,8 @@ struct BuildingTypeData
 
     bool HasDelivery() const
     {
-        return !this->FreeUnits.empty() || !this->Neighbours.empty();
+        return !this->FreeUnits.empty() || !this->Neighbours.empty()
+            || !this->Animations.empty();
     }
 
     bool IsVanilla() const
@@ -140,30 +159,55 @@ struct BuildingTypeData
     {
         DeliveryList out = this->FreeUnits;
 
-        for (std::size_t i = 0; i < this->Neighbours.Entries.size(); ++i)
+        auto append = [&out](DeliveryList const& src)
         {
-            auto entry = this->Neighbours.Entries[i];
-            auto const& src = this->Neighbours.Entries[i];
-
-            entry.TypeIndex = int(out.Types.size());
-            out.Types.push_back(this->Neighbours.Types[std::size_t(src.TypeIndex)]);
-
-            // Teams are a separate parallel array, so the index needs remapping
-            // too — otherwise a neighbour would inherit whichever team happened
-            // to sit at its old index in the other list.
-            if (src.TeamIndex >= 0
-                && std::size_t(src.TeamIndex) < this->Neighbours.Teams.size())
+            for (std::size_t i = 0; i < src.Entries.size(); ++i)
             {
-                entry.TeamIndex = int(out.Teams.size());
-                out.Teams.push_back(this->Neighbours.Teams[std::size_t(src.TeamIndex)]);
-            }
-            else
-            {
-                entry.TeamIndex = -1;
-            }
+                auto entry = src.Entries[i];
+                auto const& from = src.Entries[i];
 
-            out.Entries.push_back(entry);
-        }
+                // Every parallel array gets its own remap. Sharing one index
+                // would make an appended entry inherit whatever happened to sit
+                // at its old position in the merged list.
+                if (from.TypeIndex >= 0
+                    && std::size_t(from.TypeIndex) < src.Types.size())
+                {
+                    entry.TypeIndex = int(out.Types.size());
+                    out.Types.push_back(src.Types[std::size_t(from.TypeIndex)]);
+                }
+                else
+                {
+                    entry.TypeIndex = -1;
+                }
+
+                if (from.TeamIndex >= 0
+                    && std::size_t(from.TeamIndex) < src.Teams.size())
+                {
+                    entry.TeamIndex = int(out.Teams.size());
+                    out.Teams.push_back(src.Teams[std::size_t(from.TeamIndex)]);
+                }
+                else
+                {
+                    entry.TeamIndex = -1;
+                }
+
+                if (from.AnimIndex >= 0
+                    && std::size_t(from.AnimIndex) < src.Anims.size())
+                {
+                    entry.AnimIndex = int(out.Anims.size());
+                    out.Anims.push_back(src.Anims[std::size_t(from.AnimIndex)]);
+                }
+                else
+                {
+                    entry.AnimIndex = -1;
+                }
+
+                out.Entries.push_back(entry);
+            }
+        };
+
+        append(this->Neighbours);
+        append(this->Animations);
 
         return out;
     }
@@ -222,6 +266,17 @@ private:
             ? &this->List.Teams[std::size_t(entry.TeamIndex)]
             : nullptr;
     }
+
+    AnimTypeClass* AnimOf(Delivery::Entry const& entry) const
+    {
+        return entry.AnimIndex >= 0 && std::size_t(entry.AnimIndex) < this->List.Anims.size()
+            ? this->List.Anims[std::size_t(entry.AnimIndex)]
+            : nullptr;
+    }
+
+    // Play an entry's spawn effect at a cell. No-op when it has none.
+    void PlayAnim(Delivery::Entry const& entry, CellStruct const& cell,
+        HouseClass* pOwner) const;
 
     TechnoTypeClass* TypeOf(Delivery::Entry const& entry) const
     {

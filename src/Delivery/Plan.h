@@ -110,6 +110,15 @@ namespace Delivery
         Foot,      // Infantry / Unit / Aircraft: needs a clear cell
         Building,  // needs a foundation that fits, placed in a ring around the parent
         Limbo,     // never touches the map; exists only to satisfy prerequisites
+
+        // An AnimType played near the parent. Two uses in one kind:
+        //   * decoration — smoke, sparks, a construction effect on the building
+        //   * a spawner — an AnimType with MakeInfantry= or Spawns= creates the
+        //     unit itself when it plays, which is how "the animation spawns the
+        //     unit" works rather than the unit appearing from nothing
+        // Whether it needs a free cell is the modder's call (RequireClear),
+        // because those two uses want opposite answers.
+        Animation,
     };
 
     /*
@@ -248,6 +257,21 @@ namespace Delivery
 
         // Dock index for aircraft entries; -1 for everything else.
         int  Dock = -1;
+
+        // Index into the list's parallel Anims array, or -1 for none.
+        //
+        // For Kind::Animation this IS the thing being delivered and TypeIndex
+        // is unused. For any other kind it is the optional spawn effect played
+        // at the cell the object lands on, so a free unit arrives with a puff
+        // of something instead of blinking into existence.
+        int  AnimIndex = -1;
+
+        // Kind::Animation only: must the cell be free?
+        //
+        // Decoration wants NO -- the interesting cells are the ones the parent
+        // building is standing on. An anim that spawns a unit wants YES, or the
+        // unit it makes has nowhere to go. Defaults to no; see the parser.
+        bool RequireClear = false;
     };
 
     // ---------------------------------------------------------------------
@@ -437,7 +461,9 @@ namespace Delivery
 
         for (auto const& entry : entries)
         {
-            if (entry.TypeIndex < 0)
+            // An entry is deliverable if it has EITHER a techno type or an
+            // animation. Pure Kind::Animation entries carry only the latter.
+            if (entry.TypeIndex < 0 && entry.AnimIndex < 0)
                 continue;
 
             if (entry.What == Kind::Limbo)
@@ -469,10 +495,16 @@ namespace Delivery
                 ? (startRadius + (entry.Range > 0 ? entry.Range : 1))
                 : (startRadius + 8);
 
+            // A decorative animation deliberately skips the clear-cell test:
+            // the cell it most wants is usually the parent's own, which no
+            // object could ever occupy.
+            const bool mustBeClear =
+                entry.What != Kind::Animation || entry.RequireClear;
+
             bool placed = false;
             for (auto const& offset : candidateOffsets(cellDir, startRadius, maxRadius))
             {
-                if (!map.canPlace(entry, offset))
+                if (mustBeClear && !map.canPlace(entry, offset))
                     continue;
 
                 // A cell can pass canPlace and still be refused by Unlimbo, so

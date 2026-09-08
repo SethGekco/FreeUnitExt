@@ -3,6 +3,38 @@
 Everything here is opt-in. A mod that sets none of these keys behaves exactly as
 it does today.
 
+## Every tag at a glance
+
+Placed on a **BuildingType** unless noted.
+
+| Tag | Type | Default | Section |
+|---|---|---|---|
+| `FreeUnit=` | list of TechnoTypes | none | [1](#1-freeunit--what-a-building-brings-with-it) |
+| `FreeUnit.Facing=` | direction / `random` / 0-255 | building's facing | [1](#parallel-modifier-keys) |
+| `FreeUnit.Cell=` | direction / `random` | nearest free cell | [1](#parallel-modifier-keys) |
+| `FreeUnit.Spacing=` | integer ≥ 0 | `0` | [1](#parallel-modifier-keys) |
+| `FreeUnit.Limbo=` | boolean | `no` | [1](#limbo-buildings-prerequisites-without-a-structure) |
+| `FreeUnit.Range=` | integer ≥ 1 | `1` | [1](#buildings-that-come-with-buildings) |
+| `FreeUnit.Anim=` | list of AnimTypes | none | [4](#4-animations) |
+| `FreeUnit.Mission=` | MissionType | see §1 | [1](#freeunitmission-missiontype-default-see-below) |
+| `FreeUnit.Owner=` | see §1 | `Invoker` | [1](#freeunitowner-default-invoker) |
+| `FreeUnit.Script=` | ScriptType | none | [1](#freeunitscript-and-freeunitteam-default-none) |
+| `FreeUnit.Team=` | TeamType | none | [1](#freeunitscript-and-freeunitteam-default-none) |
+| `FreeUnit.OnlyBuilt=` | boolean | `yes` | [1](#freeunitonlybuilt-boolean-default-yes) |
+| `FreeUnit.Buildings=` | list of BuildingTypes | none | [1](#buildings-that-come-with-buildings) |
+| `FreeUnit.Buildings.*` | same modifiers as `FreeUnit.*` | — | [1](#buildings-that-come-with-buildings) |
+| `FreeUnit.Anims=` | list of AnimTypes | none | [4](#4-animations) |
+| `FreeUnit.Anims.Cell=` | direction / `random` | nearest cell | [4](#4-animations) |
+| `FreeUnit.Anims.Spacing=` | integer ≥ 0 | `0` | [4](#4-animations) |
+| `FreeUnit.Anims.Owner=` | see §1 | `Invoker` | [4](#4-animations) |
+| `FreeUnit.Anims.RequireClear=` | boolean | `no` | [4](#4-animations) |
+| `SeparateAircraft=` | boolean | `[General]` value | [2](#2-separateaircraft--free-aircraft-on-numbered-pads) |
+| `SeparateAircraft.Types=` | list of AircraftTypes | none | [2](#separateaircrafttypes-list-of-aircrafttypes) |
+| `SeparateAircraft.Facing=` | direction / `random` | `[General]PoseDir` | [2](#separateaircrafttypes-list-of-aircrafttypes) |
+| `ManualFacing=` | boolean, on a **VehicleType** | `no` | [3](#3-manualfacing--aiming-an-immobile-unit) |
+| `ManualFacing.Turret=` | boolean, on a **VehicleType** | `no` | [3](#3-manualfacing--aiming-an-immobile-unit) |
+| `ManualFacing.ROT=` | integer, on a **VehicleType** | type's ROT | [3](#3-manualfacing--aiming-an-immobile-unit) |
+
 ---
 
 ## 1. FreeUnit — what a building brings with it
@@ -36,6 +68,7 @@ default; write `-` to skip an entry explicitly.
 | `FreeUnit.Spacing=` | integer ≥ 0 | `0` | cells left empty between consecutive entries on the same side |
 | `FreeUnit.Limbo=` | boolean | `no` | deliver into limbo instead of onto the map (buildings only) |
 | `FreeUnit.Range=` | integer ≥ 1 | `1` | how far a *building* entry may be placed from the parent |
+| `FreeUnit.Anim=` | AnimType | none | spawn effect played where the entry lands (§4) |
 
 ### `FreeUnit.Mission=` (MissionType, default: see below)
 
@@ -362,3 +395,88 @@ factory permanently.
 
 `ManualFacing.ROT=` matters when the type has `ROT=0`: the body would otherwise
 snap instantly to the new angle rather than swinging around.
+
+---
+
+## 4. Animations
+
+Free units used to appear out of nothing. Two keys fix that, and the second one
+also lets the animation itself be what creates the unit.
+
+### `FreeUnit.Anim=` (list of AnimTypes, default: none)
+
+A spawn effect played at the cell each delivered object lands on. It is a
+parallel modifier like `FreeUnit.Facing=`: one value broadcasts to every entry,
+or give one per entry.
+
+```ini
+[GAPILE]
+FreeUnit=GGI,GGI
+FreeUnit.Anim=S_BANG48              ; each GI arrives in a flash
+```
+
+Purely cosmetic. The effect plays **after** the object is confirmed on the map,
+so a cell that refuses the unit never leaves an orphaned animation behind, and
+an unknown AnimType costs you the effect but never the unit.
+
+### `FreeUnit.Anims=` (list of AnimTypes, default: none)
+
+Animations delivered **in their own right**, with no TechnoType involved. This
+list is independent of `FreeUnit=`; a building may use either or both.
+
+It covers two quite different jobs, which is why `RequireClear` exists:
+
+| Job | Example | `RequireClear` |
+|---|---|---|
+| decoration / building addon | smoke, sparks, a glow on the structure | `no` (default) |
+| spawning a unit | an AnimType with `MakeInfantry=` or `Spawns=` | `yes` |
+
+| Key | Values | Default | Meaning |
+|---|---|---|---|
+| `FreeUnit.Anims.Cell=` | `N NE E SE S SW W NW`, `random` | nearest cell | which side of the building |
+| `FreeUnit.Anims.Spacing=` | integer ≥ 0 | `0` | see the note on measurement below |
+| `FreeUnit.Anims.Owner=` | as `FreeUnit.Owner=` | `Invoker` | house for remap, **and** who a spawned unit belongs to |
+| `FreeUnit.Anims.RequireClear=` | boolean | `no` | must the cell be free? |
+
+#### Letting the animation spawn the unit
+
+```ini
+[GADEPT]
+FreeUnit.Anims=GENDEATH             ; artmd.ini gives GENDEATH MakeInfantry=0
+FreeUnit.Anims.Cell=E
+FreeUnit.Anims.RequireClear=yes     ; the Brute needs somewhere to stand
+```
+
+The depot delivers no unit at all. It plays an animation, and the animation
+makes the unit — vanilla YR's own `MakeInfantry=` mechanism, which resolves its
+index through `[General]AnimToInfantry=` in rulesmd.
+
+> **`MakeInfantry=` and `Spawns=` live in `artmd.ini`, not `rulesmd.ini`.** An
+> AnimType is declared in rules and given its behaviour in art. Looking for
+> these keys in rulesmd finds nothing, and an animation without them simply
+> plays and spawns no one.
+
+`FreeUnit.Anims.Owner=` decides who the spawned unit belongs to, because the
+engine hands `MakeInfantry`'s infantry to the animation's owning house. Leave it
+at `Invoker` and the unit belongs to whoever built the structure.
+
+#### Why `RequireClear` defaults to `no`, and how spacing is measured
+
+Decoration and unit-spawning want opposite answers, and the decorative case is
+both the commoner one and the one that fails most confusingly if it guesses
+wrong — the cell a building addon most wants is the building's own, which no
+object could ever occupy.
+
+So with `RequireClear=no`:
+
+- the clear-cell test is skipped entirely, and
+- position is measured **from the building's centre**, not from the edge of its
+  footprint. `Spacing=0` (the default) means the parent's own cell; raise it to
+  push the effect outward ring by ring.
+
+With `RequireClear=yes` an animation behaves like any delivered unit: it needs a
+cell clear enough for infantry, measured outward from the footprint, and it is
+reported as failed if the search finds nowhere.
+
+Decoration never consumes the spacing budget that keeps solid objects apart, so
+adding an animation to a building will not push its free units further out.

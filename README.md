@@ -26,6 +26,21 @@ FreeUnit.Spacing=1
 - proper spacing between them
 - buildings that come with **real** randomly-adjacent buildings (`FreeUnit.Buildings=`, `.Range=`)
 - buildings that come with **limbo** buildings, for prerequisites only (`.Limbo=yes`)
+- a mission, an owner, or an aimd.ini script per entry (`.Mission=`, `.Owner=`, `.Script=`)
+- a spawn animation, so units stop appearing out of thin air (`.Anim=`)
+
+**Animations, including ones that spawn the unit themselves.**
+
+```ini
+[GADEPT]
+FreeUnit.Anims=GENDEATH             ; artmd.ini gives GENDEATH MakeInfantry=0
+FreeUnit.Anims.Cell=E
+FreeUnit.Anims.RequireClear=yes     ; the unit it makes needs somewhere to stand
+```
+
+No unit is delivered here at all — an animation plays, and the animation makes
+the unit. Leave `RequireClear` at its default `no` and the same key becomes a
+decorative building addon, playing on the structure's own cell.
 
 **`SeparateAircraft=` becomes per-building, with a list.**
 

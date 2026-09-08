@@ -345,8 +345,12 @@ namespace Delivery
     {
         std::vector<Offset> out;
 
-        if (startRadius < 1)
-            startRadius = 1;
+        // 0 is a legal request and yields the parent's own centre cell. Only
+        // decoration asks for it (see resolve); every object placement computes
+        // a startRadius of at least 1, so nothing can land inside the parent by
+        // accident.
+        if (startRadius < 0)
+            startRadius = 0;
         if (maxRadius < startRadius)
             maxRadius = startRadius;
 
@@ -486,8 +490,20 @@ namespace Delivery
             else if (facing == Dir_Unset)
                 facing = parentFacing;
 
+            // Decoration is measured from the building's CENTRE, not from the
+            // edge of its footprint, and takes no part in the running spacing
+            // used to keep solid objects apart. An animation occupies nothing,
+            // so pushing it out to where a unit would fit defeats the purpose:
+            // a building addon wants to sit ON the building. Spacing therefore
+            // reads as "rings out from the centre" here, and 0 -- the default --
+            // means the parent's own cell.
+            const bool decorative =
+                entry.What == Kind::Animation && !entry.RequireClear;
+
             int* slot = isConcreteDir(cellDir) ? &usedRadius[(cellDir % 256) / 32] : &usedAny;
-            const int startRadius = *slot + 1 + entry.Spacing;
+            const int startRadius = decorative
+                ? entry.Spacing
+                : *slot + 1 + entry.Spacing;
 
             // Buildings search their own Range; feet get a generous ring so a
             // crowded base still yields a unit.
@@ -518,9 +534,15 @@ namespace Delivery
 
                 // Advance the running distance by the Chebyshev radius we
                 // actually used, so the next entry on this side starts beyond it.
-                const int ax = offset.X < 0 ? -offset.X : offset.X;
-                const int ay = offset.Y < 0 ? -offset.Y : offset.Y;
-                *slot = ax > ay ? ax : ay;
+                // Decoration is skipped: it blocks nothing, so letting it push
+                // later deliveries outward would be a spacing cost for an
+                // object that is not there.
+                if (!decorative)
+                {
+                    const int ax = offset.X < 0 ? -offset.X : offset.X;
+                    const int ay = offset.Y < 0 ? -offset.Y : offset.Y;
+                    *slot = ax > ay ? ax : ay;
+                }
                 break;
             }
 

@@ -448,10 +448,59 @@ static void test_decorativeAnimIgnoresBlockedCells()
     anim.Cell = Delivery::Dir_N;
     anim.RequireClear = false;
 
-    auto result = Delivery::resolve({ anim }, map, Delivery::Dir_N);
+    // parentRadius is deliberately non-zero: decoration is measured from the
+    // building's CENTRE, so it must ignore the footprint that keeps solid
+    // objects out. A building addon that cannot sit on its building is useless.
+    auto result = Delivery::resolve({ anim }, map, Delivery::Dir_N, /*parentRadius=*/3);
     check(result.Delivered == 1, "decoration was delivered onto a blocked cell");
-    check(map.Log.size() == 1 && map.Log[0].Where == Delivery::Offset { 0, -1 },
-        "and landed on the FIRST candidate rather than searching past it");
+    check(map.Log.size() == 1 && map.Log[0].Where == Delivery::Offset { 0, 0 },
+        "and landed on the parent's own cell, inside its footprint");
+}
+
+static void test_decorationSpacingCountsFromCentre()
+{
+    std::printf("resolve — decoration Spacing counts rings out from the centre\n");
+
+    FakeMap map;
+
+    Delivery::Entry anim;
+    anim.What = Delivery::Kind::Animation;
+    anim.AnimIndex = 0;
+    anim.Cell = Delivery::Dir_N;
+    anim.RequireClear = false;
+    anim.Spacing = 2;
+
+    auto result = Delivery::resolve({ anim }, map, Delivery::Dir_N, /*parentRadius=*/4);
+    check(result.Delivered == 1, "spaced decoration was delivered");
+    check(map.Log.size() == 1 && map.Log[0].Where == Delivery::Offset { 0, -2 },
+        "Spacing=2 put it 2 cells from the CENTRE, not 2 past the footprint");
+}
+
+static void test_decorationDoesNotPushUnitsOutward()
+{
+    std::printf("resolve — decoration does not consume the spacing budget\n");
+
+    // An animation occupies nothing, so it must not shove a later unit further
+    // out than it would otherwise have gone.
+    FakeMap withAnim;
+
+    Delivery::Entry anim;
+    anim.What = Delivery::Kind::Animation;
+    anim.AnimIndex = 0;
+    anim.Cell = Delivery::Dir_N;
+    anim.RequireClear = false;
+
+    auto unit = foot(900);
+    unit.Cell = Delivery::Dir_N;
+
+    Delivery::resolve({ anim, unit }, withAnim, Delivery::Dir_N);
+
+    FakeMap alone;
+    Delivery::resolve({ unit }, alone, Delivery::Dir_N);
+
+    check(withAnim.Log.size() == 2 && alone.Log.size() == 1, "both runs placed everything");
+    check(withAnim.Log[1].Where == alone.Log[0].Where,
+        "the unit landed in the same cell with or without the decoration");
 }
 
 static void test_spawningAnimStillNeedsAClearCell()
@@ -598,6 +647,8 @@ int main()
     test_placeFailureTriesNextCell();
     test_parentRadiusClearsFootprint();
     test_decorativeAnimIgnoresBlockedCells();
+    test_decorationSpacingCountsFromCentre();
+    test_decorationDoesNotPushUnitsOutward();
     test_spawningAnimStillNeedsAClearCell();
     test_animEntryNeedsNoTechnoType();
 
